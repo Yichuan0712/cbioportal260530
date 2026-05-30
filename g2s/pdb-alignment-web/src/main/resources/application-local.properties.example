@@ -1,0 +1,7 @@
+# Copy to application-local.properties (gitignored), then run with:
+#   -Dspring.profiles.active=local
+# or add to start-web.ps1 / IDE run config.
+
+# Windows example (adjust drive/path):
+workspace=C:/CursorProjects/cbioportal260530/g2s/workdir/
+uploaddir=C:/CursorProjects/cbioportal260530/g2s/tmp/upload

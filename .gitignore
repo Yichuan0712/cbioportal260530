@@ -1,2 +1,2 @@
-# Local reference project — not part of this monorepo
-pdb_annotation/
+# Monorepo root — subprojects have their own .gitignore files
+# (cbioportal/, cbioportal-frontend/, g2s/)

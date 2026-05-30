@@ -1,0 +1,37 @@
+services:
+  mysql:
+    image: mariadb:10.0
+    container_name: pdb-mariadb
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: pdb
+      MYSQL_USER: cbio
+      MYSQL_PASSWORD: cbio
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./mysql_data:/var/lib/mysql
+
+  mongo:
+    image: mongo:4.4
+    container_name: pdb-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - ./mongo_data:/data/db
+
+  pdb-app:
+    build: .
+    container_name: g2s-app
+    depends_on:
+      - mysql
+      - mongo
+    environment:
+      JAVA_OPTS: "-Xmx7000m"
+    volumes:
+      - ./workdir:/workdir
+      - ./g2s_pdb:/g2s_pdb
+    ports:
+      - "8081:8081"
+      - "8082:8082"
+      - "5443:5443"
