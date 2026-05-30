@@ -1,0 +1,48 @@
+{
+  "name": "oncokb-frontend-commons",
+  "version": "0.1.4",
+  "description": "OncoKB Frontend Modules",
+  "main": "dist/index.js",
+  "module": "dist/index.es.js",
+  "jsnext:main": "dist/index.es.js",
+  "typings": "dist/index.d.ts",
+  "styles": "dist/styles.css",
+  "engines": {
+    "node": "22.18.0"
+  },
+  "files": [
+    "dist"
+  ],
+  "author": "cBioPortal",
+  "license": "AGPL-3.0-or-later",
+  "repository": "cBioPortal/cbioportal-frontend",
+  "scripts": {
+    "build": "pnpm run tcm && cross-env NODE_ENV=production NODE_OPTIONS=--max-old-space-size=2048 pnpm run rollup",
+    "start": "pnpm run watch",
+    "watch": "concurrently \"pnpm run tcm:watch\" \"pnpm run rollup:watch\"",
+    "watchSSL": "pnpm run watch",
+    "rollup": "rollup -c rollup.config.ts",
+    "rollup:watch": "pnpm run rollup --watch",
+    "tcm": "tcm -p src/**/*.module.scss",
+    "tcm:watch": "pnpm run tcm --watch",
+    "prepare": "pnpm run build",
+    "test": "cross-env jest $GREP --env=jsdom --runInBand --ci --reporters=default --reporters=jest-junit --passWithNoTests",
+    "test:watch": "pnpm run test --watch"
+  },
+  "peerDependencies": {
+    "react": "^15.0.0 || ^16.0.0",
+    "react-dom": "^15.0.0 || ^16.0.0"
+  },
+  "dependencies": {
+    "cbioportal-utils": "workspace:*",
+    "classnames": "^2.2.5",
+    "lodash": "^4.17.21",
+    "oncokb-styles": "~1.4.2",
+    "oncokb-ts-api-client": "workspace:*",
+    "rc-tooltip": "^5.0.2",
+    "react-bootstrap": "^0.31.5",
+    "react-collapse": "^4.0.3",
+    "react-if": "^2.1.0",
+    "react-table": "^6.10.0"
+  }
+}
