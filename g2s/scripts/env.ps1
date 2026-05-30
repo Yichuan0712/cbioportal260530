@@ -24,5 +24,11 @@ if (Test-Path $dockerBin) {
 }
 
 Write-Host "JAVA_HOME=$env:JAVA_HOME"
+# java/mvn -version write to stderr; under $ErrorActionPreference='Stop' (e.g. when this is
+# dot-sourced by start-services.ps1) that stderr is turned into a terminating
+# NativeCommandError that would abort the caller. Force 'Continue' just for these prints.
+$prevEAP = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
 java -version 2>&1 | Select-Object -First 1
 if (Get-Command mvn -ErrorAction SilentlyContinue) { mvn -version 2>&1 | Select-Object -First 1 }
+$ErrorActionPreference = $prevEAP

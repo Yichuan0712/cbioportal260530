@@ -7,7 +7,7 @@ Set-Location $Root
 $ps = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
 $jars = @(
     @{ Name = "G2S API (8081)"; Cmd = "java -Xmx4096m -jar pdb-alignment-api\target\pdb-alignment-api-0.1.0.jar" },
-    @{ Name = "PDB API (8082)"; Cmd = "java -Xmx2048m -Dorg.springframework.boot.logging.LoggingSystem=org.springframework.boot.logging.java.JavaLoggingSystem -jar pdb\target\pdb-0.1.0.war --server.port=8082" },
+    @{ Name = "PDB API (8082)"; Cmd = "java -Xmx2048m '-Dorg.springframework.boot.logging.LoggingSystem=org.springframework.boot.logging.java.JavaLoggingSystem' -jar pdb\target\pdb-0.1.0.war --server.port=8082" },
     @{ Name = "Web UI (5443)";    Cmd = "java -Xmx4096m -jar pdb-alignment-web\target\pdb-alignment-web-0.1.0.jar" }
 )
 
