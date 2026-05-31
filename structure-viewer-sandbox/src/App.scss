@@ -1,0 +1,23 @@
+body {
+    margin: 0;
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-size: 14px;
+    background: #ffffff;
+}
+
+.sandbox-app,
+.sandbox-viewport {
+    min-height: 100vh;
+    background: #ffffff;
+}
+
+.sandbox-viewport {
+    position: relative;
+}
+
+.sandbox-button-center {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+}
