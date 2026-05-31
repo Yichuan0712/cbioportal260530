@@ -1,5 +1,8 @@
+import { Alignment, ResidueMapping } from 'genome-nexus-ts-api-client';
 import { CacheData } from 'shared/lib/LazyMobXCache';
-import { ResidueMapping } from 'genome-nexus-ts-api-client';
+import { remoteData } from 'cbioportal-frontend-commons';
+import { MobxPromise } from 'cbioportal-frontend-commons';
+import { fetchResidueMappingByPdb } from '../../api/g2sApi';
 
 export type ResidueMappingQuery = {
     uniprotId: string;
@@ -8,23 +11,85 @@ export type ResidueMappingQuery = {
     uniprotPositions: number[];
 };
 
-export default class ResidueMappingCache {
-    private mappings: ResidueMapping[];
+export async function fetchAlignments(
+    positions: number[],
+    uniprotId: string,
+    pdbId: string,
+    chainId: string
+) {
+    if (positions.length > 0) {
+        return await fetchResidueMappingByPdb(
+            uniprotId,
+            pdbId,
+            chainId,
+            positions
+        );
+    }
+    return [];
+}
 
-    constructor(mappings: ResidueMapping[] = []) {
-        this.mappings = mappings;
+export default class ResidueMappingCache {
+    private queries: {
+        [key: string]: MobxPromise<Array<CacheData<ResidueMapping> | null>>;
+    } = {};
+
+    public get(query: ResidueMappingQuery) {
+        const key = this.generateQueryKey(query);
+
+        if (!this.queries[key]) {
+            this.queries[key] = remoteData<
+                Array<CacheData<ResidueMapping> | null>
+            >(
+                {
+                    invoke: async () => {
+                        let residueMappingCacheData: Array<
+                            CacheData<ResidueMapping> | null
+                        > = [];
+                        let residueMappings: ResidueMapping[] = [];
+
+                        const alignments = await fetchAlignments(
+                            query.uniprotPositions,
+                            query.uniprotId,
+                            query.pdbId,
+                            query.chainId
+                        );
+
+                        if (alignments.length > 0) {
+                            alignments.forEach((alignment: Alignment) => {
+                                residueMappings = residueMappings.concat(
+                                    alignment.residueMapping || []
+                                );
+                            });
+
+                            residueMappingCacheData = residueMappings.map(
+                                (residueMapping: ResidueMapping) =>
+                                    ({
+                                        status: 'complete',
+                                        data: residueMapping,
+                                    } as CacheData<ResidueMapping>)
+                            );
+                        }
+
+                        return residueMappingCacheData;
+                    },
+                    onError: () => {
+                        // fail silently, same as main project
+                    },
+                },
+                this.defaultData()
+            );
+        }
+
+        return this.queries[key];
     }
 
-    public get(query: ResidueMappingQuery): { result?: Array<CacheData<ResidueMapping> | null> } {
-        const filtered = this.mappings.filter(mapping =>
-            query.uniprotPositions.includes(mapping.queryPosition)
-        );
+    private generateQueryKey(query: ResidueMappingQuery): string {
+        return `${query.uniprotId}_${query.pdbId}_${
+            query.chainId
+        }_${query.uniprotPositions.join(',')}`;
+    }
 
-        return {
-            result: filtered.map(data => ({
-                status: 'complete' as const,
-                data,
-            })),
-        };
+    private defaultData(): Array<CacheData<ResidueMapping> | null> {
+        return [null];
     }
 }

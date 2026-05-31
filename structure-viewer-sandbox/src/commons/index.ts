@@ -9,3 +9,4 @@ export {
     default as TableCellStatusIndicator,
     TableCellStatus,
 } from './TableCellStatus';
+export { remoteData, MobxPromise } from './lib/remoteData';

@@ -27,7 +27,7 @@ import {
     getProteinStartPositionsByRange,
 } from 'shared/lib/MutationUtils';
 import StructureViewer from './StructureViewer';
-import PdbChainInfo from 'shared/components/PdbChainInfo';
+import PdbChainInfo from '../PdbChainInfo';
 import {
     ProteinScheme,
     ProteinColor,

@@ -3,6 +3,23 @@ declare module '*.module.scss' {
     export default classes;
 }
 
+interface ImportMetaEnv {
+    readonly VITE_G2S_URL?: string;
+    readonly VITE_GENOMENEXUS_URL?: string;
+    readonly VITE_HUGO_GENE?: string;
+    readonly VITE_ISOFORM_OVERRIDE_SOURCE?: string;
+    readonly VITE_PREFERRED_PDB?: string;
+    readonly VITE_USE_MOCK_DATA?: string;
+    readonly VITE_USE_MOCK_MUTATIONS?: string;
+    readonly VITE_CBIOPORTAL_URL?: string;
+    readonly VITE_CBIOPORTAL_STUDY_IDS?: string;
+    readonly VITE_CBIOPORTAL_MUTATION_PROFILES?: string;
+}
+
+interface ImportMeta {
+    readonly env: ImportMetaEnv;
+}
+
 declare module '3dmol' {
     const $3Dmol: any;
     export = $3Dmol;

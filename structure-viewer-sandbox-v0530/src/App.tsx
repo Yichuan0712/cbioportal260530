@@ -1,52 +1,58 @@
 import * as React from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { observer } from 'mobx-react';
 import StructureViewerPanel from 'shared/components/structureViewer/StructureViewerPanel';
-import PdbChainDataStore from 'shared/components/mutationMapper/PdbChainDataStore';
-import MutationMapperDataStore from 'shared/components/mutationMapper/MutationMapperDataStore';
-import PdbHeaderCache from 'shared/cache/PdbHeaderCache';
-import ResidueMappingCache from 'shared/cache/ResidueMappingCache';
 import { DEFAULT_PROTEIN_IMPACT_TYPE_COLORS } from 'react-mutation-mapper';
+import { sandboxG2SStore } from './store/SandboxG2SStore';
 import {
-    EMPTY_RESIDUE_MAPPINGS,
-    MOCK_ALIGNMENT_INDEX,
-    MOCK_MUTATIONS,
-    MOCK_UNIPROT_ID,
-    PDB_4U4A_CHAIN,
-    PDB_HEADER_4U4A,
-    SAMPLE_RESIDUE_MAPPINGS,
-} from './mocks/fixtures';
+    SANDBOX_HUGO_GENE,
+    USE_MOCK_G2S_DATA,
+    USE_MOCK_MUTATIONS,
+} from './api/sandboxApiConfig';
+import PdbHeaderCache from 'shared/cache/PdbHeaderCache';
 import './App.scss';
-
-/**
- * Toggle to true to demo mutation coloring on the 3D structure.
- * false reproduces the screenshot warning (unmapped mutations).
- */
-const SHOW_MAPPED_MUTATIONS = false;
-
-const pdbChainDataStore = new PdbChainDataStore([PDB_4U4A_CHAIN]);
-pdbChainDataStore.selectFirstChain();
-
-const mutationDataStore = new MutationMapperDataStore(MOCK_MUTATIONS, [1700]);
-const pdbHeaderCache = new PdbHeaderCache({ '4u4a': PDB_HEADER_4U4A });
-const residueMappingCache = new ResidueMappingCache(
-    SHOW_MAPPED_MUTATIONS ? SAMPLE_RESIDUE_MAPPINGS : EMPTY_RESIDUE_MAPPINGS
-);
 
 const SandboxApp = observer(function SandboxApp() {
     const [panelOpen, setPanelOpen] = useState(false);
+    const store = sandboxG2SStore;
+
+    useEffect(() => {
+        store.initialize();
+    }, [store]);
+
+    const dataSourceLabel = USE_MOCK_G2S_DATA
+        ? 'mock fixtures'
+        : `g2s.genomenexus.org + Genome Nexus (${SANDBOX_HUGO_GENE})`;
+
+    const mutationSourceLabel = USE_MOCK_MUTATIONS
+        ? 'mock mutations'
+        : 'cBioPortal.org (study-resolved profiles)';
 
     return (
         <div className="sandbox-app">
             <div className="sandbox-viewport">
-                {panelOpen && (
+                {store.status === 'pending' && (
+                    <div className="sandbox-status sandbox-status--loading">
+                        Loading {dataSourceLabel} + {mutationSourceLabel}…
+                    </div>
+                )}
+
+                {store.status === 'error' && (
+                    <div className="sandbox-status sandbox-status--error">
+                        {store.errorMessage}
+                    </div>
+                )}
+
+                {panelOpen && store.status === 'complete' && (
                     <StructureViewerPanel
-                        mutationDataStore={mutationDataStore}
-                        pdbChainDataStore={pdbChainDataStore}
-                        pdbAlignmentIndex={MOCK_ALIGNMENT_INDEX}
-                        pdbHeaderCache={pdbHeaderCache}
-                        residueMappingCache={residueMappingCache}
-                        uniprotId={MOCK_UNIPROT_ID}
+                        mutationDataStore={store.mutationDataStore}
+                        pdbChainDataStore={store.pdbChainDataStore}
+                        pdbAlignmentIndex={store.pdbAlignmentIndex}
+                        pdbHeaderCache={
+                            store.pdbHeaderCache as PdbHeaderCache
+                        }
+                        residueMappingCache={store.residueMappingCache}
+                        uniprotId={store.uniprotId}
                         onClose={() => setPanelOpen(false)}
                         {...DEFAULT_PROTEIN_IMPACT_TYPE_COLORS}
                     />
@@ -55,13 +61,35 @@ const SandboxApp = observer(function SandboxApp() {
                 <div className="sandbox-button-center">
                     <button
                         className="btn btn-default btn-sm"
-                        disabled={pdbChainDataStore.allData.length === 0}
+                        disabled={
+                            store.status !== 'complete' ||
+                            store.pdbChainDataStore.allData.length === 0
+                        }
                         onClick={() => setPanelOpen(open => !open)}
                         data-test="view3DStructure"
                     >
                         View 3D Structure
                     </button>
                 </div>
+
+                {store.status === 'complete' && (
+                    <div className="sandbox-meta">
+                        {store.ensemblTranscriptId && (
+                            <span>{store.ensemblTranscriptId} · </span>
+                        )}
+                        {store.pdbChainDataStore.allData.length} PDB chain(s)
+                        · UniProt {store.uniprotId}
+                        {store.pdbChainDataStore.selectedChain &&
+                            ` · ${store.pdbChainDataStore.selectedChain.pdbId}/${store.pdbChainDataStore.selectedChain.chain}`}
+                        {!USE_MOCK_MUTATIONS && store.mutationCount > 0 && (
+                            <span>
+                                {' '}
+                                · {store.mutationCount} mutations (
+                                {mutationSourceLabel})
+                            </span>
+                        )}
+                    </div>
+                )}
             </div>
         </div>
     );

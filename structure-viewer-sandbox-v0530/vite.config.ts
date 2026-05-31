@@ -47,11 +47,33 @@ export default defineConfig({
         preprocessorOptions: {
             scss: {
                 api: 'modern-compiler',
+                // Match cbioportal-frontend/src/globalStyles/variables.scss (structureViewer.module.scss)
+                additionalData: `$mediumGrey: #ddd; $borderColor: $mediumGrey; $cornerBorderRadius: 5px;`,
             },
         },
     },
     server: {
         port: 5173,
         strictPort: true,
+        proxy: {
+            '/g2s-api': {
+                target: 'https://g2s.genomenexus.org',
+                changeOrigin: true,
+                secure: true,
+                rewrite: path => path.replace(/^\/g2s-api/, ''),
+            },
+            '/genomenexus-api': {
+                target: 'https://v1.genomenexus.org',
+                changeOrigin: true,
+                secure: true,
+                rewrite: path => path.replace(/^\/genomenexus-api/, ''),
+            },
+            '/cbioportal-api': {
+                target: 'https://www.cbioportal.org',
+                changeOrigin: true,
+                secure: true,
+                rewrite: path => path.replace(/^\/cbioportal-api/, ''),
+            },
+        },
     },
 });

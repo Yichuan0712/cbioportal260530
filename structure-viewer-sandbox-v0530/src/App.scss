@@ -17,7 +17,37 @@ body {
 
 .sandbox-button-center {
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
     min-height: 100vh;
+    gap: 12px;
+}
+
+.sandbox-status {
+    position: absolute;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 8px 14px;
+    border-radius: 4px;
+    max-width: 90%;
+    text-align: center;
+    z-index: 10;
+}
+
+.sandbox-status--loading {
+    background: #f5f5f5;
+    color: #555;
+}
+
+.sandbox-status--error {
+    background: #f2dede;
+    color: #a94442;
+}
+
+.sandbox-meta {
+    font-size: 12px;
+    color: #777;
+    text-align: center;
 }

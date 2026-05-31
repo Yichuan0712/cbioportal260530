@@ -10,6 +10,22 @@ portable-to-cbioportal/structureViewer/
 cbioportal-frontend/src/shared/components/structureViewer/
 ```
 
+## 与官方保持一致
+
+`structureViewer/` 内 7 个核心文件应与  
+`cbioportal-frontend/src/shared/components/structureViewer/` **逐字相同**（不含 `*.spec.ts`）。
+
+从官方刷新 portable（开发前或怀疑 drift 时）：
+
+```powershell
+.\structure-viewer-sandbox\portable-to-cbioportal\sync-from-official.ps1
+```
+
+沙箱专用、**不拷回**主项目：
+
+- `../PdbChainInfo` → `portable-to-cbioportal/PdbChainInfo.tsx`（re-export）
+- `vite.config.ts` 注入 `$borderColor` / `$cornerBorderRadius`（与官方 `variables.scss` 一致）
+
 ## 一键同步到主项目（Windows）
 
 在仓库根目录执行：

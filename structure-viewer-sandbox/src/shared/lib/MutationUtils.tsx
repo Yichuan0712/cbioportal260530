@@ -1,8 +1,10 @@
 import _ from 'lodash';
-import { observable, computed, action, makeObservable } from 'mobx';
 import { Mutation } from 'cbioportal-ts-api-client';
-import { IProteinImpactTypeColors } from 'react-mutation-mapper';
-import { DEFAULT_PROTEIN_IMPACT_TYPE_COLORS } from '../../lib/proteinImpact';
+import {
+    DEFAULT_PROTEIN_IMPACT_TYPE_COLORS,
+    getColorForProteinImpactType as getDefaultColorForProteinImpactType,
+    IProteinImpactTypeColors,
+} from '../../lib/proteinImpact';
 
 export function groupMutationsByProteinStartPos(
     mutationData: Mutation[][]
@@ -55,30 +57,13 @@ export function getProteinStartPositionsByRange(
 
 export function getColorForProteinImpactType(
     mutations: Mutation[],
-    colors: IProteinImpactTypeColors = DEFAULT_PROTEIN_IMPACT_TYPE_COLORS
+    colors: IProteinImpactTypeColors = DEFAULT_PROTEIN_IMPACT_TYPE_COLORS,
+    isPutativeDriver?: (mutation: Partial<Mutation>) => boolean
 ): string {
-    const mutationType = (mutations[0]?.mutationType || '').toLowerCase();
-
-    if (mutationType.includes('missense')) {
-        return colors.missenseColor;
-    }
-    if (
-        mutationType.includes('trunc') ||
-        mutationType.includes('nonsense') ||
-        mutationType.includes('nonstop') ||
-        mutationType.includes('frame_shift')
-    ) {
-        return colors.truncatingColor;
-    }
-    if (mutationType.includes('inframe') || mutationType.includes('in_frame')) {
-        return colors.inframeColor;
-    }
-    if (mutationType.includes('splice')) {
-        return colors.spliceColor;
-    }
-    if (mutationType.includes('fusion')) {
-        return colors.fusionColor;
-    }
-
-    return colors.otherColor;
+    return getDefaultColorForProteinImpactType(
+        mutations,
+        colors,
+        undefined,
+        isPutativeDriver
+    );
 }

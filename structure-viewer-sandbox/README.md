@@ -35,11 +35,13 @@ npm run dev
 
 ## Mock 数据说明
 
-- **PDB 结构**：3Dmol 从 RCSB 在线加载 `4u4a`（需网络）
-- **PDB 标题 / 链信息**：`src/mocks/fixtures.ts` 中的 `PDB_HEADER_4U4A`
-- **突变映射**：默认 `EMPTY_RESIDUE_MAPPINGS`，会显示与线上一致的红色警告
+默认已接 **SOX9**，数据来自 **cBioPortal.org + g2s.genomenexus.org + v1.genomenexus.org**（与官网相同公网后端）：
 
-要演示突变着色，在 `src/App.tsx` 中将 `SHOW_MAPPED_MUTATIONS` 改为 `true`。
+- **3D 着色**：全部映射突变（与 Mutation Mapper 3D 面板逻辑一致；不含 Driver/VUS 表格 UI）
+- **突变**：按 study 解析 profile 后 fetch（默认 pan-cancer study 列表，可用 `VITE_CBIOPORTAL_STUDY_IDS` 覆盖）
+- **不自动选中位点**（无默认黄色侧链）
+
+回退 mock：`VITE_USE_MOCK_DATA=true` 和/或 `VITE_USE_MOCK_MUTATIONS=true`。
 
 ## 后续改造建议
 
