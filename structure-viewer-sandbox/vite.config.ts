@@ -16,6 +16,10 @@ export default defineConfig({
     ],
     resolve: {
         alias: {
+            'shared/components/structureViewer': path.resolve(
+                __dirname,
+                'portable-to-cbioportal/structureViewer'
+            ),
             shared: path.resolve(__dirname, 'src/shared'),
             config: path.resolve(__dirname, 'src/config'),
             'cbioportal-frontend-commons': path.resolve(

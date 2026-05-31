@@ -4,14 +4,22 @@
 
 **未修改** cBioPortal 主项目任何文件；所有代码位于 `structure-viewer-sandbox/` 目录。
 
-## 包含内容
+## 目录结构
 
 | 目录 | 说明 |
 |------|------|
-| `src/shared/components/structureViewer/` | 浮层面板 + 3Dmol 渲染（从上游拷贝） |
-| `src/shared/cache/` | Mock 版 `PdbHeaderCache` / `ResidueMappingCache` |
-| `src/mocks/fixtures.ts` | 静态测试数据（默认 4u4a / BRCA1） |
-| `src/commons/` | 精简版 `DefaultTooltip` 等 UI 依赖 |
+| **`portable-to-cbioportal/structureViewer/`** | **可拷回主项目的 7 个核心文件（只改这里）** |
+| `portable-to-cbioportal/copy-back.ps1` | 一键同步到 `cbioportal-frontend` |
+| `src/App.tsx` | demo 壳，不要拷回 |
+| `src/mocks/` | 假数据，不要拷回 |
+| `src/shared/cache/` | Mock 缓存，不要拷回 |
+
+## 同步到主项目
+
+```powershell
+# 在仓库根目录执行
+.\structure-viewer-sandbox\portable-to-cbioportal\copy-back.ps1
+```
 
 ## 快速开始
 

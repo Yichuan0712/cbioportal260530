@@ -15,6 +15,9 @@
     "strict": false,
     "baseUrl": ".",
     "paths": {
+      "shared/components/structureViewer/*": [
+        "portable-to-cbioportal/structureViewer/*"
+      ],
       "shared/*": ["src/shared/*"],
       "config/*": ["src/config/*"],
       "cbioportal-frontend-commons": ["src/commons/index.ts"],
