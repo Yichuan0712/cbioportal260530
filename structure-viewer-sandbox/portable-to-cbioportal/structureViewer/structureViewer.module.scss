@@ -6,11 +6,21 @@
     right: 0;
     top: 0;
     z-index: 100;
-    border: 1px solid $borderColor;
+    border: 2px solid #5186c3;
     border-radius: $cornerBorderRadius;
     background-color: #ffffff;
+    pointer-events: auto;
     /* fix for bootstrap 3 */
     box-sizing: content-box;
+}
+
+/** Full-viewport drag cage — panel cannot be dragged completely off-screen. */
+.structure-viewer-drag-portal {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 100;
+    overflow: hidden;
 }
 
 .header {
@@ -29,6 +39,7 @@
 
 .increased-size-panel {
     width: auto;
+    overflow: hidden;
 }
 
 .main-3d-panel canvas {
@@ -145,34 +156,15 @@
     }
 }
 
-.structure-source-badge {
-    display: inline-block;
-    margin-left: 8px;
-    padding: 1px 6px;
-    font-size: 11px;
-    font-weight: 600;
-    border-radius: 3px;
-    vertical-align: middle;
-}
-
-.structure-source-badge--pdb {
-    color: #1f4f7a;
-    background-color: #e8f1fa;
-    border: 1px solid #b9d4ef;
-}
-
-.structure-source-badge--alphafold {
-    color: #5a3d00;
-    background-color: #fff4d6;
-    border: 1px solid #f0d48a;
-}
-
 .structure-viewer-no-drag {
     cursor: default;
 }
 
 .structure-viewer-overlay {
     position: relative;
+    border: 1px solid #5186c3;
+    border-radius: $cornerBorderRadius;
+    overflow: hidden;
 }
 
 .structure-viewer-status {

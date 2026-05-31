@@ -38,6 +38,7 @@ import {
     StructureLoadStatus,
     IResidueSpec,
     IMutationLabelSpec,
+    IStructureResiduePin,
 } from './StructureVisualizer';
 import PyMolScriptGenerator from './PyMolScriptGenerator';
 import MutationLabelDetailPanel from './MutationLabelDetailPanel';
@@ -88,6 +89,19 @@ export default class StructureViewerPanel extends React.Component<
     IStructureViewerPanelProps,
     {}
 > {
+    /** Minimum px of panel that must stay inside the viewport when dragging. */
+    private static readonly MIN_DRAG_VISIBLE_PX = 56;
+
+    /** Expanded panel max height as fraction of viewport (no page/panel scrollbars). */
+    private static readonly EXPANDED_PANEL_VH = 0.88;
+    private static readonly EXPANDED_PANEL_CHROME_FALLBACK_PX = 340;
+    private static readonly EXPANDED_VIEWER_MIN_HEIGHT_PX = 200;
+    /** Collapsed 3D canvas size (fixed; not recomputed from DOM on source switch). */
+    private static readonly COLLAPSED_VIEWER_WIDTH = 450;
+    private static readonly COLLAPSED_VIEWER_HEIGHT = 350;
+    private static readonly EXPANDED_WIDTH_SCALE = 5 / 3;
+    private static readonly EXPANDED_HEIGHT_SCALE = 2;
+
     @observable protected isCollapsed: boolean = false;
     @observable protected isIncreasedSize: boolean = false;
     @observable protected proteinScheme: ProteinScheme = ProteinScheme.CARTOON;
@@ -97,6 +111,7 @@ export default class StructureViewerPanel extends React.Component<
         MutationColor.MUTATION_TYPE;
     @observable protected selectedMutationLabel: IMutationLabelSpec | null =
         null;
+    @observable protected pinnedResidue: IStructureResiduePin | null = null;
     @observable protected structureSource: StructureSource =
         StructureSource.PDB;
     @observable protected displayBoundMolecules: boolean = true;
@@ -108,8 +123,15 @@ export default class StructureViewerPanel extends React.Component<
         ALPHAFOLD_DEFAULT_ISOFORM,
     ];
     @observable protected plddtByResidue: { [position: number]: number } = {};
+    @observable private dragLayoutTick = 0;
+    @observable private viewerCanvasWidth: number =
+        StructureViewerPanel.COLLAPSED_VIEWER_WIDTH;
+    @observable private viewerCanvasHeight: number =
+        StructureViewerPanel.COLLAPSED_VIEWER_HEIGHT;
 
     protected _3dMolDiv: HTMLDivElement | undefined;
+    private _dragPortalRef: HTMLDivElement | null = null;
+    private _dragPanelRef: HTMLDivElement | null = null;
 
     constructor(props: IStructureViewerPanelProps) {
         super(props);
@@ -138,6 +160,7 @@ export default class StructureViewerPanel extends React.Component<
         this.handleMutationLabelDetailClose = this.handleMutationLabelDetailClose.bind(
             this
         );
+        this.handleResidueClick = this.handleResidueClick.bind(this);
         this.handleBoundMoleculeChange = this.handleBoundMoleculeChange.bind(
             this
         );
@@ -150,10 +173,19 @@ export default class StructureViewerPanel extends React.Component<
         this.handleStructureLoadStatusChange = this.handleStructureLoadStatusChange.bind(
             this
         );
+        this.handleDragLayoutChange = this.handleDragLayoutChange.bind(this);
+        this.dragPortalRefHandler = this.dragPortalRefHandler.bind(this);
+        this.dragPanelRefHandler = this.dragPanelRefHandler.bind(this);
     }
 
     public componentDidMount() {
         this.loadAlphaFoldPanelData();
+        window.addEventListener('resize', this.handleDragLayoutChange);
+        this.scheduleDragBoundsRefresh();
+    }
+
+    public componentWillUnmount() {
+        window.removeEventListener('resize', this.handleDragLayoutChange);
     }
 
     public componentDidUpdate(prevProps: IStructureViewerPanelProps) {
@@ -733,18 +765,6 @@ export default class StructureViewerPanel extends React.Component<
             <div className={classnames('row', styles['header'])}>
                 <div className="col col-sm-10">
                     <span>3D Structure</span>
-                    <span
-                        className={classnames(styles['structure-source-badge'], {
-                            [styles['structure-source-badge--pdb']]:
-                                this.structureSource === StructureSource.PDB,
-                            [styles['structure-source-badge--alphafold']]:
-                                this.structureSource === StructureSource.ALPHAFOLD,
-                        })}
-                    >
-                        {this.structureSource === StructureSource.PDB
-                            ? 'Experimental'
-                            : 'Predicted'}
-                    </span>
                 </div>
                 <div className="col col-sm-2">
                     <span className="pull-right" style={{ whiteSpace: 'nowrap' }}>
@@ -813,6 +833,8 @@ export default class StructureViewerPanel extends React.Component<
                                 onMutationLabelClick={
                                     this.handleMutationLabelClick
                                 }
+                                pinnedResidue={this.pinnedResidue}
+                                onResidueClick={this.handleResidueClick}
                                 pdbId={this.viewerPdbId || ''}
                                 uniprotId={this.props.uniprotId}
                                 chainId={this.viewerChainId || ''}
@@ -904,40 +926,55 @@ export default class StructureViewerPanel extends React.Component<
 
     public render() {
         return (
-            <Draggable
-                cancel="input, textarea, button, select, option, a, .fa, .structure-viewer-no-drag"
+            <div
+                ref={this.dragPortalRefHandler}
+                className={styles['structure-viewer-drag-portal']}
             >
-                <div
-                    className={classnames(styles['main-3d-panel'], {
-                        [styles['increased-size-panel']]: this.isIncreasedSize,
-                    })}
+                <Draggable
+                    bounds={this.getDragBounds()}
+                    cancel="input, textarea, button, select, option, a, .fa, .structure-viewer-no-drag"
                 >
-                    <div className="structure-viewer-header row">
-                        {this.header()}
-                        <hr style={{ borderTopColor: '#BBBBBB' }} />
-                    </div>
                     <div
-                        className={classnames(styles['body'], {
-                            [styles['collapsed-panel']]: this.isCollapsed,
+                        ref={this.dragPanelRefHandler}
+                        className={classnames(styles['main-3d-panel'], {
+                            [styles['increased-size-panel']]:
+                                this.isIncreasedSize,
                         })}
+                        style={
+                            this.isIncreasedSize
+                                ? {
+                                      maxHeight: `${this.expandedPanelMaxHeightPx}px`,
+                                  }
+                                : undefined
+                        }
                     >
-                        {this.structureSourceMenu()}
-                        {this.mainContent()}
-                        <div className="row">
-                            {this.topToolbar()}
-                            <hr />
+                        <div className="structure-viewer-header row">
+                            {this.header()}
+                            <hr style={{ borderTopColor: '#BBBBBB' }} />
                         </div>
-                        <div className="row">
-                            <div className="col col-sm-6">
-                                {this.proteinStyleMenu()}
+                        <div
+                            className={classnames(styles['body'], {
+                                [styles['collapsed-panel']]: this.isCollapsed,
+                            })}
+                        >
+                            {this.structureSourceMenu()}
+                            {this.mainContent()}
+                            <div className="row">
+                                {this.topToolbar()}
+                                <hr />
                             </div>
-                            <div className="col col-sm-6">
-                                {this.mutationStyleMenu()}
+                            <div className="row">
+                                <div className="col col-sm-6">
+                                    {this.proteinStyleMenu()}
+                                </div>
+                                <div className="col col-sm-6">
+                                    {this.mutationStyleMenu()}
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
-            </Draggable>
+                </Draggable>
+            </div>
         );
     }
 
@@ -945,12 +982,70 @@ export default class StructureViewerPanel extends React.Component<
         this._3dMolDiv = div;
     }
 
-    private toggleCollapse() {
-        this.isCollapsed = !this.isCollapsed;
+    private dragPortalRefHandler(div: HTMLDivElement | null) {
+        this._dragPortalRef = div;
+        this.scheduleDragBoundsRefresh();
     }
 
+    private dragPanelRefHandler(div: HTMLDivElement | null) {
+        this._dragPanelRef = div;
+        this.scheduleDragBoundsRefresh();
+    }
+
+    @action
+    private handleDragLayoutChange() {
+        this.dragLayoutTick += 1;
+    }
+
+    private scheduleDragBoundsRefresh() {
+        requestAnimationFrame(() => {
+            this.handleDragLayoutChange();
+        });
+    }
+
+    private getDragBounds():
+        | {
+              left: number;
+              top: number;
+              right: number;
+              bottom: number;
+          }
+        | false {
+        void this.dragLayoutTick;
+
+        const panel = this._dragPanelRef;
+        const portal = this._dragPortalRef;
+
+        if (!panel || !portal) {
+            return false;
+        }
+
+        const minVisible = StructureViewerPanel.MIN_DRAG_VISIBLE_PX;
+        const width = panel.offsetWidth;
+        const height = panel.offsetHeight;
+        const parentWidth = portal.clientWidth;
+        const parentHeight = portal.clientHeight;
+        const offsetLeft = panel.offsetLeft;
+        const offsetTop = panel.offsetTop;
+
+        return {
+            left: -(offsetLeft + width - minVisible),
+            top: -(offsetTop + height - minVisible),
+            right: parentWidth - minVisible - offsetLeft,
+            bottom: parentHeight - minVisible - offsetTop,
+        };
+    }
+
+    @action
+    private toggleCollapse() {
+        this.isCollapsed = !this.isCollapsed;
+        this.scheduleDragBoundsRefresh();
+    }
+
+    @action
     private toggleDoubleSize() {
         this.isIncreasedSize = !this.isIncreasedSize;
+        this.scheduleDragBoundsRefresh();
     }
 
     private handleProteinSchemeChange(evt: React.FormEvent<HTMLSelectElement>) {
@@ -998,11 +1093,38 @@ export default class StructureViewerPanel extends React.Component<
     @action
     private handleMutationLabelClick(label: IMutationLabelSpec) {
         this.selectedMutationLabel = label;
+        this.pinnedResidue = {
+            chain: this.viewerChainId || '',
+            resi: label.structurePosition,
+        };
+    }
+
+    @action
+    private handleResidueClick(chain: string, resi: number) {
+        const chainKey = chain.toUpperCase();
+        const pinnedKey = this.pinnedResidue?.chain.toUpperCase();
+
+        if (
+            this.pinnedResidue?.resi === resi &&
+            pinnedKey === chainKey
+        ) {
+            this.pinnedResidue = null;
+            this.selectedMutationLabel = null;
+            return;
+        }
+
+        this.pinnedResidue = { chain, resi };
+
+        const matchingLabel = this.mutationLabels.find(
+            label => label.structurePosition === resi
+        );
+        this.selectedMutationLabel = matchingLabel || null;
     }
 
     @action
     private handleMutationLabelDetailClose() {
         this.selectedMutationLabel = null;
+        this.pinnedResidue = null;
     }
 
     private handleBoundMoleculeChange() {
@@ -1021,6 +1143,7 @@ export default class StructureViewerPanel extends React.Component<
         this.structureLoadStatus = 'idle';
         this.structureLoadError = null;
         this.selectedMutationLabel = null;
+        this.pinnedResidue = null;
 
         if (this.structureSource === StructureSource.PDB) {
             this.displayPlddtColoring = false;
@@ -1037,6 +1160,7 @@ export default class StructureViewerPanel extends React.Component<
         this.structureLoadStatus = 'idle';
         this.structureLoadError = null;
         this.selectedMutationLabel = null;
+        this.pinnedResidue = null;
         this.loadPlddtScores();
     }
 
@@ -1151,30 +1275,79 @@ export default class StructureViewerPanel extends React.Component<
         }
     }
 
+    @computed get expandedPanelMaxHeightPx(): number {
+        void this.dragLayoutTick;
+        return Math.floor(
+            window.innerHeight * StructureViewerPanel.EXPANDED_PANEL_VH
+        );
+    }
+
     @computed get structureViewerBounds(): {
         width: number | string;
         height: number | string;
     } {
-        let width: number | string;
-        let height: number | string;
+        return {
+            width: this.structureViewerWidth,
+            height: this.structureViewerHeight,
+        };
+    }
 
-        // if 3Dmol container div is not initialized yet, just set to a default value: width=auto; height=350
-        // otherwise toggle the size
+    @computed get structureViewerWidth(): number | string {
         if (this.isIncreasedSize) {
-            // TODO: hardocded default value to fix cBioPortal/cbioportal#4561
-            width = this._3dMolDiv
-                ? Math.floor(this._3dMolDiv.offsetWidth * (5 / 3))
-                : 698;
-            height = this._3dMolDiv ? this._3dMolDiv.offsetHeight * 2 : 350;
-        } else {
-            // TODO: hardcoded default value to fix cBioPortal/cbioportal#4561
-            width = this._3dMolDiv
-                ? Math.floor(this._3dMolDiv.offsetWidth / (5 / 3))
-                : 450;
-            height = this._3dMolDiv ? this._3dMolDiv.offsetHeight / 2 : 350;
+            return Math.floor(
+                this.viewerCanvasWidth *
+                    StructureViewerPanel.EXPANDED_WIDTH_SCALE
+            );
         }
 
-        return { width, height };
+        return this.viewerCanvasWidth;
+    }
+
+    @computed get structureViewerHeight(): number | string {
+        if (this.isIncreasedSize) {
+            void this.dragLayoutTick;
+
+            const preferredHeight = Math.floor(
+                this.viewerCanvasHeight *
+                    StructureViewerPanel.EXPANDED_HEIGHT_SCALE
+            );
+
+            return Math.min(
+                preferredHeight,
+                this.getExpandedMaxViewerHeight()
+            );
+        }
+
+        return this.viewerCanvasHeight;
+    }
+
+    /** Max 3D canvas height so the expanded panel fits in the viewport without scrollbars. */
+    private getExpandedMaxViewerHeight(): number {
+        const maxPanelHeight = this.expandedPanelMaxHeightPx;
+        const targetViewerHeight = Math.floor(
+            this.viewerCanvasHeight *
+                StructureViewerPanel.EXPANDED_HEIGHT_SCALE
+        );
+
+        if (this._dragPanelRef) {
+            const measuredViewerHeight =
+                this._3dMolDiv?.offsetHeight ?? targetViewerHeight;
+            const chromeHeight =
+                this._dragPanelRef.offsetHeight - measuredViewerHeight;
+
+            if (chromeHeight > 0) {
+                return Math.max(
+                    StructureViewerPanel.EXPANDED_VIEWER_MIN_HEIGHT_PX,
+                    maxPanelHeight - chromeHeight
+                );
+            }
+        }
+
+        return Math.max(
+            StructureViewerPanel.EXPANDED_VIEWER_MIN_HEIGHT_PX,
+            maxPanelHeight -
+                StructureViewerPanel.EXPANDED_PANEL_CHROME_FALLBACK_PX
+        );
     }
 
     @computed get isStructureViewerReady(): boolean {

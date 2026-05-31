@@ -3,11 +3,17 @@ body {
     font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
     font-size: 14px;
     background: #ffffff;
+    overflow: hidden;
+}
+
+html {
+    overflow: hidden;
 }
 
 .sandbox-app {
     position: relative;
-    min-height: 100vh;
+    height: 100vh;
+    overflow: hidden;
     background: #ffffff;
 }
 

@@ -15,6 +15,12 @@ export interface IMutationLabelSpec {
     highlighted?: boolean;
 }
 
+/** A structure residue kept highlighted after click. */
+export interface IStructureResiduePin {
+    chain: string;
+    resi: number;
+}
+
 export enum ProteinScheme {
     CARTOON,
     SPACE_FILLING,
@@ -95,6 +101,10 @@ export interface IStructureVisualizerProps {
     uniformMutationColor?: string;
     // color of the user-selected mutations
     highlightColor?: string;
+    /** Golden outline when hovering a residue in the 3D viewer. */
+    hoverOutlineColor?: string;
+    /** Residue to keep highlighted after click (independent of hover). */
+    pinnedResidue?: IStructureResiduePin | null;
     /** When ALPHAFOLD, enables pLDDT coloring and other source-specific behavior. */
     structureSource?: StructureSource;
     /** AlphaFold isoform index (F1, F2, …). Defaults to 1. */
@@ -104,6 +114,7 @@ export interface IStructureVisualizerProps {
         message?: string
     ) => void;
     onMutationLabelClick?: (label: IMutationLabelSpec) => void;
+    onResidueClick?: (chain: string, resi: number) => void;
 }
 
 abstract class StructureVisualizer {
@@ -126,6 +137,7 @@ abstract class StructureVisualizer {
         mutationColor: MutationColor.MUTATION_TYPE,
         uniformMutationColor: '#8A2BE2',
         highlightColor: '#FFDD00',
+        hoverOutlineColor: '#FFEB3B',
         sideChain: SideChain.SELECTED,
     };
 

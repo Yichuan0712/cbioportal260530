@@ -71,6 +71,17 @@ interface IStructureVisualizerState {
 }
 
 export default class StructureVisualizer3D extends StructureVisualizer {
+    /** Props that should not trigger a full style rebuild. */
+    private static readonly STYLE_SYNC_OMIT_PROPS = [
+        'pdbId',
+        'chainId',
+        'residues',
+        'pinnedResidue',
+        'onResidueClick',
+        'onMutationLabelClick',
+        'onStructureLoadStatusChange',
+    ];
+
     private _3dMolDiv: HTMLDivElement | undefined;
     private _3dMolViewer: any;
     private _3dMol: any;
@@ -87,6 +98,25 @@ export default class StructureVisualizer3D extends StructureVisualizer {
         number,
         IMutationLabelSpec
     > = new Map();
+    private _hoveredResi: number | null = null;
+    private _hoveredChain: string | null = null;
+    private _hoverPickReady = false;
+    private _clickPickReady = false;
+    private _appliedPin: { chain: string; resi: number } | null = null;
+    private _appliedHover: { chain: string; resi: number } | null = null;
+    private _hoverSyncFrame: number | null = null;
+    private _cachedOverlayStyle: {
+        scheme: ProteinScheme;
+        color: string;
+        style: any;
+    } | null = null;
+
+    private get hoverOutlineColor(): string {
+        return (
+            this.props.hoverOutlineColor ||
+            StructureVisualizer.defaultProps.hoverOutlineColor
+        );
+    }
 
     private notifyLoadStatus(
         status: StructureLoadStatus,
@@ -200,7 +230,6 @@ export default class StructureVisualizer3D extends StructureVisualizer {
         // pdb load callback will take care of the update once the load ends
         if (this._prevState && !this._loadingPdb) {
             this.updateVisualStyle(state.residues, state.chainId, this.props);
-            this._3dMolViewer.render();
         }
     }
 
@@ -297,6 +326,7 @@ export default class StructureVisualizer3D extends StructureVisualizer {
         }
 
         this._3dMolViewer.clear();
+        this.resetHoverState();
 
         fetchAlphaFoldModelText(uniprotId, {
             baseUrl: filesBaseUrl,
@@ -377,6 +407,7 @@ export default class StructureVisualizer3D extends StructureVisualizer {
 
         // clear previous content
         this._3dMolViewer.clear();
+        this.resetHoverState();
 
         verifyPdbStructureAvailable(pdbId, props.pdbUri)
             .then(() => {
@@ -431,12 +462,46 @@ export default class StructureVisualizer3D extends StructureVisualizer {
         residues: IResidueSpec[] = this.state.residues,
         props: IStructureVisualizerProps = this.props
     ) {
-        // update global references
+        const prevProps = this.props;
+        const pinChanged = !_.isEqual(
+            prevProps.pinnedResidue,
+            props.pinnedResidue
+        );
+
         this.setProps(props);
+
+        // Click-to-pin: skip MobX state churn + full style pass when only pin changed.
+        if (
+            pinChanged &&
+            chainId === this.state.chainId &&
+            this.incomingResiduePositionsMatch(residues) &&
+            this.propsAffectingStylesEqual(prevProps, props)
+        ) {
+            this.syncPinnedHighlight(false);
+            return;
+        }
+
         this.setState({
             chainId,
             residues,
         } as IStructureVisualizerState);
+    }
+
+    private propsAffectingStylesEqual(
+        prevProps: IStructureVisualizerProps,
+        nextProps: IStructureVisualizerProps
+    ): boolean {
+        return _.isEqual(
+            _.omit(prevProps, StructureVisualizer3D.STYLE_SYNC_OMIT_PROPS),
+            _.omit(nextProps, StructureVisualizer3D.STYLE_SYNC_OMIT_PROPS)
+        );
+    }
+
+    private incomingResiduePositionsMatch(residues: IResidueSpec[]): boolean {
+        return _.isEqual(
+            _.keys(generateResiduePosToSelectorMap(residues)).sort(),
+            _.keys(this.currentResidueToPositionMap).sort()
+        );
     }
 
     public resize() {
@@ -740,10 +805,7 @@ export default class StructureVisualizer3D extends StructureVisualizer {
     }
 
     @computed get visualPropsUnchanged(): boolean {
-        return _.isEqual(
-            _.omit(this.props, ['pdbId', 'chainId', 'residues']),
-            _.omit(this._prevProps, ['pdbId', 'chainId', 'residues'])
-        );
+        return this.propsAffectingStylesEqual(this._prevProps, this.props);
     }
 
     /**
@@ -771,14 +833,476 @@ export default class StructureVisualizer3D extends StructureVisualizer {
             }
 
             this.updateMutationLabels(chainId, props);
+            this.ensureClickPickTargets();
+            this.applyHoverInteractionState(!this.needToUpdateResiduesOnly);
             return;
         }
 
         super.updateVisualStyle(residues, chainId, props);
         this.updateMutationLabels(chainId, props);
+        this.ensureClickPickTargets();
+        this.applyHoverInteractionState(!this.needToUpdateResiduesOnly);
     }
 
-    /** Registers click targets on mapped residues (no floating 3D text labels). */
+    private isHoverHighlightEnabled(): boolean {
+        return !(
+            this.props.structureSource === StructureSource.ALPHAFOLD &&
+            this.props.proteinColor === ProteinColor.PLDDT
+        );
+    }
+
+    private disableHoverInteraction(): void {
+        this.cancelHoverSyncFrame();
+        this._hoveredResi = null;
+        this._hoveredChain = null;
+        this._hoverPickReady = false;
+
+        if (
+            this._3dMolViewer &&
+            typeof this._3dMolViewer.setHoverable === 'function'
+        ) {
+            this._3dMolViewer.setHoverable({}, false);
+        }
+    }
+
+    private clearHoverHighlightOnly(): boolean {
+        if (!this._appliedHover || !this._3dMolViewer) {
+            this._appliedHover = null;
+            return false;
+        }
+
+        const pinned = this.props.pinnedResidue || null;
+
+        if (!this.residuePinsEqual(this._appliedHover, pinned)) {
+            this.restoreHoveredResidueStyle(
+                this._appliedHover.chain,
+                this._appliedHover.resi
+            );
+        }
+
+        this._appliedHover = null;
+        return true;
+    }
+
+    private applyHoverInteractionState(forceReapply = false): void {
+        if (!this.isHoverHighlightEnabled()) {
+            this.disableHoverInteraction();
+            let dirty = this.clearHoverHighlightOnly();
+            dirty = this.syncPinnedHighlight(forceReapply) || dirty;
+
+            if (dirty && this._3dMolViewer) {
+                this._3dMolViewer.render();
+            }
+            return;
+        }
+
+        this.ensureHoverPickTargets();
+        this.syncResidueHighlights(forceReapply);
+    }
+
+    private ensureClickPickTargets(): void {
+        if (
+            !this._3dMolViewer ||
+            this._clickPickReady ||
+            typeof this._3dMolViewer.setClickable !== 'function'
+        ) {
+            return;
+        }
+
+        this._3dMolViewer.setClickable({}, true, (atom: {
+            chain?: string;
+            resi?: number;
+        }) => this.handleResidueClick(atom));
+        this._clickPickReady = true;
+    }
+
+    private cancelHoverSyncFrame(): void {
+        if (this._hoverSyncFrame != null) {
+            cancelAnimationFrame(this._hoverSyncFrame);
+            this._hoverSyncFrame = null;
+        }
+    }
+
+    private resetHoverState(): void {
+        this.cancelHoverSyncFrame();
+        this._hoveredResi = null;
+        this._hoveredChain = null;
+        this._hoverPickReady = false;
+        this._clickPickReady = false;
+        this._appliedPin = null;
+        this._appliedHover = null;
+        this._cachedOverlayStyle = null;
+    }
+
+    private residuePinsEqual(
+        a: { chain: string; resi: number } | null | undefined,
+        b: { chain: string; resi: number } | null | undefined
+    ): boolean {
+        if (!a || !b) {
+            return false;
+        }
+        return (
+            a.resi === b.resi &&
+            a.chain.toUpperCase() === b.chain.toUpperCase()
+        );
+    }
+
+    /**
+     * One-time hover pick registration. Highlight overlays the same cartoon/ribbon/trace geometry.
+     */
+    private ensureHoverPickTargets(): void {
+        if (!this.isHoverHighlightEnabled()) {
+            this.disableHoverInteraction();
+            return;
+        }
+
+        if (
+            !this._3dMolViewer ||
+            this._hoverPickReady ||
+            typeof this._3dMolViewer.setHoverable !== 'function'
+        ) {
+            return;
+        }
+
+        this.ensureClickPickTargets();
+
+        if (typeof this._3dMolViewer.setHoverDuration === 'function') {
+            this._3dMolViewer.setHoverDuration(16);
+        }
+
+        this._3dMolViewer.setHoverable(
+            {},
+            true,
+            (atom: { chain?: string; resi?: number; x?: number; y?: number; z?: number }) =>
+                this.handleResidueHover(atom),
+            (atom: { chain?: string; resi?: number }) =>
+                this.handleResidueUnhover(atom)
+        );
+
+        this._hoverPickReady = true;
+    }
+
+    /** Pinned + hover both use cartoon overlay on the residue spline. */
+    private syncResidueHighlights(forceReapply = false): void {
+        if (!this._3dMolViewer || !this.isHoverHighlightEnabled()) {
+            return;
+        }
+
+        let dirty = this.syncPinnedHighlight(forceReapply);
+
+        if (forceReapply) {
+            this._appliedHover = null;
+        }
+
+        dirty = this.syncHoverHighlight() || dirty;
+
+        if (dirty) {
+            this._3dMolViewer.render();
+        }
+    }
+
+    private syncPinnedHighlight(forceReapply = false): boolean {
+        if (!this._3dMolViewer) {
+            return false;
+        }
+
+        if (forceReapply) {
+            this._appliedPin = null;
+        }
+
+        const pinned = this.props.pinnedResidue || null;
+
+        if (this.residuePinsEqual(pinned, this._appliedPin)) {
+            return false;
+        }
+
+        if (this._appliedPin) {
+            this.restoreHoveredResidueStyle(
+                this._appliedPin.chain,
+                this._appliedPin.resi
+            );
+        }
+
+        if (pinned) {
+            this.applyCartoonHoverOutline(pinned.chain, pinned.resi);
+        }
+
+        this._appliedPin = pinned ? { ...pinned } : null;
+        return true;
+    }
+
+    private syncHoverHighlight(): boolean {
+        if (!this._3dMolViewer) {
+            return false;
+        }
+
+        const pinned = this.props.pinnedResidue || null;
+        const hover =
+            this._hoveredResi != null && this._hoveredChain
+                ? { chain: this._hoveredChain, resi: this._hoveredResi }
+                : null;
+
+        if (this.residuePinsEqual(hover, this._appliedHover)) {
+            return false;
+        }
+
+        let dirty = false;
+
+        if (
+            this._appliedHover &&
+            !this.residuePinsEqual(this._appliedHover, pinned)
+        ) {
+            this.restoreHoveredResidueStyle(
+                this._appliedHover.chain,
+                this._appliedHover.resi
+            );
+            dirty = true;
+        }
+
+        if (hover && !this.residuePinsEqual(hover, pinned)) {
+            this.applyCartoonHoverOutline(hover.chain, hover.resi);
+            dirty = true;
+        }
+
+        this._appliedHover = hover ? { ...hover } : null;
+        return dirty;
+    }
+
+    private scheduleHoverHighlightUpdate(): void {
+        if (this._hoverSyncFrame != null) {
+            return;
+        }
+
+        this._hoverSyncFrame = requestAnimationFrame(() => {
+            this._hoverSyncFrame = null;
+            if (this.syncHoverHighlight() && this._3dMolViewer) {
+                this._3dMolViewer.render();
+            }
+        });
+    }
+
+    private handleResidueClick(atom: { chain?: string; resi?: number }) {
+        if (!atom || atom.resi == null || !atom.chain) {
+            return;
+        }
+
+        if (this.props.onResidueClick) {
+            this.props.onResidueClick(atom.chain, atom.resi);
+        } else if (this.props.onMutationLabelClick) {
+            const label = (this.props.mutationLabels || []).find(
+                item => item.structurePosition === atom.resi
+            );
+            if (label) {
+                this.props.onMutationLabelClick(label);
+            }
+        }
+    }
+
+    private getCartoonHoverOverlayStyle(): any {
+        const scheme = this.props.proteinScheme;
+        const color = this.formatColor(this.hoverOutlineColor);
+
+        if (
+            this._cachedOverlayStyle &&
+            this._cachedOverlayStyle.scheme === scheme &&
+            this._cachedOverlayStyle.color === color
+        ) {
+            return this._cachedOverlayStyle.style;
+        }
+
+        const preset: any =
+            StructureVisualizer3D.PROTEIN_SCHEME_PRESETS[scheme] || {};
+        let style: any;
+
+        if (scheme === ProteinScheme.SPACE_FILLING) {
+            style = {
+                sphere: {
+                    color,
+                    scale: (preset.sphere?.scale ?? 0.6) * 1.06,
+                    opacity: 1,
+                },
+            };
+        } else if (scheme === ProteinScheme.BALL_AND_STICK) {
+            style = {
+                stick: { color, radius: 0.32, opacity: 1 },
+                sphere: { color, scale: 0.32, opacity: 1 },
+            };
+        } else {
+            const cartoonStyle: any = { ...(preset.cartoon || {}) };
+            const traceLike =
+                cartoonStyle.style === 'trace' ||
+                cartoonStyle.style === 'ribbon';
+
+            style = {
+                cartoon: {
+                    ...cartoonStyle,
+                    color,
+                    opacity: 1,
+                    ...(traceLike ? {} : { thickness: 2.4 }),
+                },
+            };
+        }
+
+        this._cachedOverlayStyle = { scheme, color, style };
+        return style;
+    }
+
+    /** Gold cartoon overlay — follows 3Dmol cartoon/ribbon/trace path. */
+    private applyCartoonHoverOutline(chain: string, resi: number): void {
+        if (!this._3dMolViewer) {
+            return;
+        }
+
+        this._3dMolViewer.addStyle(
+            { chain, resi },
+            this.getCartoonHoverOverlayStyle(),
+            true
+        );
+    }
+
+    private restoreHoveredResidueStyle(chain: string, resi: number): void {
+        if (!this._3dMolViewer) {
+            return;
+        }
+
+        const props = this.props;
+        const defaultProps = StructureVisualizer.defaultProps;
+        const selector = { chain, resi };
+
+        if (
+            props.structureSource === StructureSource.ALPHAFOLD &&
+            props.proteinColor === ProteinColor.PLDDT
+        ) {
+            const style = _.cloneDeep(
+                StructureVisualizer3D.PROTEIN_SCHEME_PRESETS[
+                    props.proteinScheme
+                ]
+            );
+            const colorscheme = getAlphaFoldPlddtColorscheme();
+            _.each(style, (spec: StyleSpec) => {
+                delete spec.color;
+                delete spec.colors;
+                spec.colorscheme = colorscheme;
+            });
+            this._3dMolViewer.setStyle(selector, style);
+            return;
+        }
+
+        let style =
+            StructureVisualizer3D.PROTEIN_SCHEME_PRESETS[props.proteinScheme];
+        this.addTransparencyToStyle(
+            props.chainTranslucency || defaultProps.chainTranslucency,
+            style
+        );
+
+        const helpers = this.currentResidueToPositionMap[resi] || [];
+
+        if (helpers.length === 0) {
+            const color = props.chainColor || defaultProps.chainColor;
+            this.setColor(color, selector, style);
+            return;
+        }
+
+        helpers.forEach((residueHelper: IResidueHelper) => {
+            const residue = residueHelper.residue;
+            const helperSelector = this.selectResidue(
+                residueHelper.selector,
+                chain
+            );
+            let color: string | undefined;
+
+            if (residue.highlighted) {
+                color =
+                    props.highlightColor || defaultProps.highlightColor;
+            } else if (
+                props.mutationColor === MutationColor.MUTATION_TYPE ||
+                props.mutationColor === MutationColor.DENSITY
+            ) {
+                color = residue.color;
+            } else if (props.mutationColor === MutationColor.UNIFORM) {
+                color =
+                    props.uniformMutationColor ||
+                    defaultProps.uniformMutationColor;
+            } else {
+                color = props.chainColor || defaultProps.chainColor;
+            }
+
+            this.setColor(color, helperSelector, style);
+
+            const displaySideChain =
+                props.sideChain === SideChain.ALL ||
+                (residue.highlighted === true &&
+                    props.sideChain === SideChain.SELECTED);
+
+            if (displaySideChain) {
+                this.updateSideChain(
+                    chain,
+                    residueHelper.selector,
+                    props.proteinScheme,
+                    color,
+                    style
+                );
+            }
+        });
+    }
+
+    private handleResidueHover(atom: {
+        chain?: string;
+        resi?: number;
+        x?: number;
+        y?: number;
+        z?: number;
+    }) {
+        if (!this.isHoverHighlightEnabled()) {
+            return;
+        }
+
+        if (!this._3dMolViewer || !atom || atom.resi == null || !atom.chain) {
+            return;
+        }
+
+        const resi = atom.resi;
+        const chain = atom.chain;
+
+        if (this._hoveredResi === resi && this._hoveredChain === chain) {
+            return;
+        }
+
+        this._hoveredResi = resi;
+        this._hoveredChain = chain;
+        this.scheduleHoverHighlightUpdate();
+    }
+
+    private handleResidueUnhover(atom: { chain?: string; resi?: number }) {
+        if (!this.isHoverHighlightEnabled()) {
+            return;
+        }
+
+        if (
+            !this._3dMolViewer ||
+            this._hoveredResi == null ||
+            !this._hoveredChain
+        ) {
+            return;
+        }
+
+        if (
+            atom &&
+            atom.resi != null &&
+            (atom.resi !== this._hoveredResi ||
+                (atom.chain &&
+                    atom.chain.toUpperCase() !==
+                        this._hoveredChain.toUpperCase()))
+        ) {
+            return;
+        }
+
+        this._hoveredResi = null;
+        this._hoveredChain = null;
+        this.scheduleHoverHighlightUpdate();
+    }
+
+    /** Registers mapped mutation label positions (clicks handled globally). */
     protected updateMutationLabels(
         chainId: string,
         props: IStructureVisualizerProps = this.props
@@ -791,38 +1315,10 @@ export default class StructureVisualizer3D extends StructureVisualizer {
 
         const labels = props.mutationLabels || [];
 
-        if (typeof this._3dMolViewer.setClickable === 'function') {
-            this._3dMolViewer.setClickable({}, false);
-        }
-
-        if (labels.length === 0 || !props.onMutationLabelClick) {
-            return;
-        }
-
         labels.forEach((label: IMutationLabelSpec) => {
             this._mutationLabelSpecsByStructurePosition.set(
                 label.structurePosition,
                 label
-            );
-
-            const atoms = this._3dMolViewer.selectedAtoms({
-                chain: chainId,
-                resi: label.structurePosition,
-            });
-
-            if (!atoms || atoms.length === 0) {
-                return;
-            }
-
-            this._3dMolViewer.setClickable(
-                {
-                    chain: chainId,
-                    resi: label.structurePosition,
-                },
-                true,
-                () => {
-                    props.onMutationLabelClick!(label);
-                }
             );
         });
     }
