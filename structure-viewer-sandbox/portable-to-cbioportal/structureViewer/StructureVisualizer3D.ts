@@ -18,6 +18,7 @@ import {
     IStructureVisualizerProps,
     IResidueSpec,
     StructureLoadStatus,
+    IMutationLabelSpec,
 } from './StructureVisualizer';
 import {
     fetchAlphaFoldModelText,
@@ -82,6 +83,10 @@ export default class StructureVisualizer3D extends StructureVisualizer {
 
     private _loadingPdb: boolean = false;
     private _loadRequestId: number = 0;
+    private _mutationLabelSpecsByStructurePosition: Map<
+        number,
+        IMutationLabelSpec
+    > = new Map();
 
     private notifyLoadStatus(
         status: StructureLoadStatus,
@@ -764,10 +769,62 @@ export default class StructureVisualizer3D extends StructureVisualizer {
             if (this._3dMolViewer) {
                 this._3dMolViewer.render();
             }
+
+            this.updateMutationLabels(chainId, props);
             return;
         }
 
         super.updateVisualStyle(residues, chainId, props);
+        this.updateMutationLabels(chainId, props);
+    }
+
+    /** Registers click targets on mapped residues (no floating 3D text labels). */
+    protected updateMutationLabels(
+        chainId: string,
+        props: IStructureVisualizerProps = this.props
+    ) {
+        if (!this._3dMolViewer) {
+            return;
+        }
+
+        this._mutationLabelSpecsByStructurePosition.clear();
+
+        const labels = props.mutationLabels || [];
+
+        if (typeof this._3dMolViewer.setClickable === 'function') {
+            this._3dMolViewer.setClickable({}, false);
+        }
+
+        if (labels.length === 0 || !props.onMutationLabelClick) {
+            return;
+        }
+
+        labels.forEach((label: IMutationLabelSpec) => {
+            this._mutationLabelSpecsByStructurePosition.set(
+                label.structurePosition,
+                label
+            );
+
+            const atoms = this._3dMolViewer.selectedAtoms({
+                chain: chainId,
+                resi: label.structurePosition,
+            });
+
+            if (!atoms || atoms.length === 0) {
+                return;
+            }
+
+            this._3dMolViewer.setClickable(
+                {
+                    chain: chainId,
+                    resi: label.structurePosition,
+                },
+                true,
+                () => {
+                    props.onMutationLabelClick!(label);
+                }
+            );
+        });
     }
 
     protected selectResidues(residueCodes: string[], chainId: string) {

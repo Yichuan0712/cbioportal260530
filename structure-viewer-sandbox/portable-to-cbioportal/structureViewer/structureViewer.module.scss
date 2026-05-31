@@ -130,6 +130,21 @@
     }
 }
 
+.style-menu-secondary-row {
+    margin-top: 8px;
+}
+
+.style-menu-secondary-spacer {
+    visibility: hidden;
+}
+
+.style-menu-secondary-control {
+    :global(.checkbox) {
+        margin-top: 0;
+        margin-bottom: 0;
+    }
+}
+
 .structure-source-badge {
     display: inline-block;
     margin-left: 8px;
@@ -150,6 +165,10 @@
     color: #5a3d00;
     background-color: #fff4d6;
     border: 1px solid #f0d48a;
+}
+
+.structure-viewer-no-drag {
+    cursor: default;
 }
 
 .structure-viewer-overlay {
@@ -178,4 +197,35 @@
     color: #888888;
     font-style: italic;
     margin-top: 4px;
+}
+
+.mutation-label-detail {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 3;
+    max-width: 320px;
+    padding: 10px 12px;
+    background: rgba(255, 255, 255, 0.96);
+    border: 1px solid #cccccc;
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+    font-size: 12px;
+}
+
+.mutation-label-detail-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.mutation-label-detail-list {
+    margin: 0;
+    padding-left: 18px;
+}
+
+.mutation-label-detail-list li {
+    margin-bottom: 3px;
 }

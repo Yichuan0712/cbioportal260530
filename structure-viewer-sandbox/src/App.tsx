@@ -53,6 +53,9 @@ const SandboxApp = observer(function SandboxApp() {
                         }
                         residueMappingCache={store.residueMappingCache}
                         uniprotId={store.uniprotId}
+                        indexedVariantAnnotations={
+                            store.indexedVariantAnnotations
+                        }
                         alphafoldFilesBaseUrl={
                             import.meta.env.DEV
                                 ? '/alphafold-files'

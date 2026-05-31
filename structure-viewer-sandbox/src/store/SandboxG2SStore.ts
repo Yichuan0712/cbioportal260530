@@ -11,11 +11,12 @@ import {
     PDB_IGNORELIST,
     sortMergedPdbChains,
 } from 'shared/lib/PdbUtils';
-import { Alignment } from 'genome-nexus-ts-api-client';
+import { Alignment, VariantAnnotation } from 'genome-nexus-ts-api-client';
 import { Mutation } from 'cbioportal-ts-api-client';
 import { fetchAlignmentsByEnsembl } from '../api/g2sApi';
 import { fetchCanonicalTranscriptByHugoSymbol } from '../api/genomeNexusApi';
 import { fetchGeneByHugoSymbol, fetchMutationsForGene } from '../api/cbioportalApi';
+import { fetchVariantAnnotationsIndexedByGenomicLocation } from '../api/variantAnnotationApi';
 import {
     groupMutationsByProteinStart,
     countMutationsInRange,
@@ -30,6 +31,7 @@ import {
     MOCK_ALIGNMENT_INDEX,
     MOCK_MUTATIONS,
     MOCK_UNIPROT_ID,
+    MOCK_VARIANT_ANNOTATIONS,
     PDB_HEADER_MOCK,
     PDB_MOCK_CHAIN,
 } from '../mocks/fixtures';
@@ -66,6 +68,9 @@ export default class SandboxG2SStore {
     readonly pdbHeaderCache: PdbHeaderCache | LivePdbHeaderCache;
 
     @observable.ref pdbAlignmentIndex: PdbAlignmentIndex = MOCK_ALIGNMENT_INDEX;
+    @observable.ref indexedVariantAnnotations: {
+        [genomicLocation: string]: VariantAnnotation;
+    } = MOCK_VARIANT_ANNOTATIONS;
 
     constructor() {
         makeObservable(this);
@@ -129,6 +134,16 @@ export default class SandboxG2SStore {
         const gene = await fetchGeneByHugoSymbol(SANDBOX_HUGO_GENE);
         const rawMutations = await fetchMutationsForGene(gene.entrezGeneId);
         this.mutationCount = rawMutations.length;
+
+        try {
+            this.indexedVariantAnnotations =
+                await fetchVariantAnnotationsIndexedByGenomicLocation(
+                    rawMutations
+                );
+        } catch (error) {
+            console.warn('Variant annotation fetch failed:', error);
+            this.indexedVariantAnnotations = {};
+        }
 
         const chain =
             this.pdbChainDataStore.selectedChain ||

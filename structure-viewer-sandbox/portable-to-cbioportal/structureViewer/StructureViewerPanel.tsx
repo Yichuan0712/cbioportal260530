@@ -37,8 +37,12 @@ import {
     StructureSource,
     StructureLoadStatus,
     IResidueSpec,
+    IMutationLabelSpec,
 } from './StructureVisualizer';
 import PyMolScriptGenerator from './PyMolScriptGenerator';
+import MutationLabelDetailPanel from './MutationLabelDetailPanel';
+import { buildMutationLabels } from './MutationLabelUtils';
+import { VariantAnnotation } from 'genome-nexus-ts-api-client';
 import {
     ALPHAFOLD_DEFAULT_CHAIN,
     ALPHAFOLD_DEFAULT_ISOFORM,
@@ -73,6 +77,9 @@ export interface IStructureViewerPanelProps extends IProteinImpactTypeColors {
     alphafoldFilesBaseUrl?: string;
     /** Override AlphaFold metadata API base (sandbox dev uses `/alphafold-api` proxy). */
     alphafoldApiBaseUrl?: string;
+    indexedVariantAnnotations?: {
+        [genomicLocation: string]: VariantAnnotation;
+    };
     onClose?: () => void;
 }
 
@@ -88,6 +95,8 @@ export default class StructureViewerPanel extends React.Component<
     @observable protected sideChain: SideChain = SideChain.SELECTED;
     @observable protected mutationColor: MutationColor =
         MutationColor.MUTATION_TYPE;
+    @observable protected selectedMutationLabel: IMutationLabelSpec | null =
+        null;
     @observable protected structureSource: StructureSource =
         StructureSource.PDB;
     @observable protected displayBoundMolecules: boolean = true;
@@ -121,6 +130,12 @@ export default class StructureViewerPanel extends React.Component<
         );
         this.handleSideChainChange = this.handleSideChainChange.bind(this);
         this.handleMutationColorChange = this.handleMutationColorChange.bind(
+            this
+        );
+        this.handleMutationLabelClick = this.handleMutationLabelClick.bind(
+            this
+        );
+        this.handleMutationLabelDetailClose = this.handleMutationLabelDetailClose.bind(
             this
         );
         this.handleBoundMoleculeChange = this.handleBoundMoleculeChange.bind(
@@ -545,43 +560,61 @@ export default class StructureViewerPanel extends React.Component<
                         </div>
                     </div>
                 </div>
+                <div
+                    className={classnames(
+                        'row',
+                        styles['style-menu-secondary-row']
+                    )}
+                >
+                    <div className="col col-sm-12">
+                        <div className="row">
+                            <span
+                                className={
+                                    styles['style-menu-secondary-spacer']
+                                }
+                            >
+                                &nbsp;
+                            </span>
+                        </div>
+                        <div
+                            className={classnames(
+                                'row',
+                                styles['style-menu-secondary-control']
+                            )}
+                        >
+                            {this.structureSource === StructureSource.PDB && (
+                                <Checkbox
+                                    checked={this.displayBoundMolecules}
+                                    onChange={
+                                        this
+                                            .handleBoundMoleculeChange as React.FormEventHandler<
+                                            any
+                                        >
+                                    }
+                                >
+                                    Display bound molecules{' '}
+                                    {this.defaultInfoTooltip(
+                                        this.boundMoleculesTooltipContent()
+                                    )}
+                                </Checkbox>
+                            )}
+                            {this.structureSource ===
+                                StructureSource.ALPHAFOLD && (
+                                <Checkbox
+                                    checked={this.colorByPlddtEnabled}
+                                    onChange={this.handlePlddtColorChange}
+                                >
+                                    Display pLDDT coloring{' '}
+                                    {this.defaultInfoTooltip(
+                                        this.plddtTooltipContent()
+                                    )}
+                                </Checkbox>
+                            )}
+                        </div>
+                    </div>
+                </div>
             </span>
         );
-    }
-
-    public structureDisplayOptions() {
-        if (this.structureSource === StructureSource.PDB) {
-            return (
-                <Checkbox
-                    checked={this.displayBoundMolecules}
-                    onChange={
-                        this
-                            .handleBoundMoleculeChange as React.FormEventHandler<
-                            any
-                        >
-                    }
-                >
-                    Display bound molecules{' '}
-                    {this.defaultInfoTooltip(
-                        this.boundMoleculesTooltipContent()
-                    )}
-                </Checkbox>
-            );
-        }
-
-        if (this.structureSource === StructureSource.ALPHAFOLD) {
-            return (
-                <Checkbox
-                    checked={this.colorByPlddtEnabled}
-                    onChange={this.handlePlddtColorChange}
-                >
-                    Display pLDDT coloring{' '}
-                    {this.defaultInfoTooltip(this.plddtTooltipContent())}
-                </Checkbox>
-            );
-        }
-
-        return null;
     }
 
     public mutationStyleMenu() {
@@ -745,18 +778,6 @@ export default class StructureViewerPanel extends React.Component<
                 <span>
                     <div className="row">{this.structureInfoContent()}</div>
                     {this.alphafoldMappingNote()}
-                    <div
-                        className={classnames(
-                            'row',
-                            styles['structure-display-options-row']
-                        )}
-                    >
-                        <div className="col col-sm-12">
-                            <div className="row">
-                                {this.structureDisplayOptions()}
-                            </div>
-                        </div>
-                    </div>
                     <If condition={this.residueWarning.length > 0}>
                         <div className="row">
                             <div className="col col-sm-12 text-center">
@@ -773,7 +794,8 @@ export default class StructureViewerPanel extends React.Component<
                         <div
                             className={classnames(
                                 'col col-sm-12',
-                                styles['structure-viewer-overlay']
+                                styles['structure-viewer-overlay'],
+                                'structure-viewer-no-drag'
                             )}
                         >
                             <StructureViewer
@@ -787,6 +809,10 @@ export default class StructureViewerPanel extends React.Component<
                                 proteinColor={this.effectiveProteinColor}
                                 sideChain={this.sideChain}
                                 mutationColor={this.mutationColor}
+                                mutationLabels={this.mutationLabels}
+                                onMutationLabelClick={
+                                    this.handleMutationLabelClick
+                                }
                                 pdbId={this.viewerPdbId || ''}
                                 uniprotId={this.props.uniprotId}
                                 chainId={this.viewerChainId || ''}
@@ -802,6 +828,10 @@ export default class StructureViewerPanel extends React.Component<
                                 containerRef={this.containerRefHandler}
                             />
                             {this.structureViewerStatusOverlay()}
+                            <MutationLabelDetailPanel
+                                label={this.selectedMutationLabel}
+                                onClose={this.handleMutationLabelDetailClose}
+                            />
                         </div>
                     </div>
                 </span>
@@ -874,7 +904,9 @@ export default class StructureViewerPanel extends React.Component<
 
     public render() {
         return (
-            <Draggable handle=".structure-viewer-header">
+            <Draggable
+                cancel="input, textarea, button, select, option, a, .fa, .structure-viewer-no-drag"
+            >
                 <div
                     className={classnames(styles['main-3d-panel'], {
                         [styles['increased-size-panel']]: this.isIncreasedSize,
@@ -963,6 +995,16 @@ export default class StructureViewerPanel extends React.Component<
         );
     }
 
+    @action
+    private handleMutationLabelClick(label: IMutationLabelSpec) {
+        this.selectedMutationLabel = label;
+    }
+
+    @action
+    private handleMutationLabelDetailClose() {
+        this.selectedMutationLabel = null;
+    }
+
     private handleBoundMoleculeChange() {
         this.displayBoundMolecules = !this.displayBoundMolecules;
     }
@@ -978,6 +1020,7 @@ export default class StructureViewerPanel extends React.Component<
         );
         this.structureLoadStatus = 'idle';
         this.structureLoadError = null;
+        this.selectedMutationLabel = null;
 
         if (this.structureSource === StructureSource.PDB) {
             this.displayPlddtColoring = false;
@@ -993,6 +1036,7 @@ export default class StructureViewerPanel extends React.Component<
         );
         this.structureLoadStatus = 'idle';
         this.structureLoadError = null;
+        this.selectedMutationLabel = null;
         this.loadPlddtScores();
     }
 
@@ -1147,6 +1191,53 @@ export default class StructureViewerPanel extends React.Component<
 
     @computed get maxMutationCountPerPosition(): number {
         return getMaxMutationCount(this.mutationsByPosition);
+    }
+
+    @computed get pdbPositionByQueryPosition(): {
+        [queryPosition: number]: number;
+    } {
+        const map: { [queryPosition: number]: number } = {};
+
+        if (!this.residueMappingData) {
+            return map;
+        }
+
+        this.residueMappingData.forEach(cacheData => {
+            if (cacheData && cacheData.data) {
+                map[cacheData.data.queryPosition] = cacheData.data.pdbPosition;
+            }
+        });
+
+        return map;
+    }
+
+    @computed get mutationLabels(): IMutationLabelSpec[] {
+        return buildMutationLabels({
+            mutationsByPosition: this.mutationsByPosition,
+            proteinToStructurePosition: (proteinPosition: number) =>
+                this.mapProteinToStructurePosition(proteinPosition),
+            isHighlighted: (proteinPosition: number) =>
+                !!(
+                    this.props.mutationDataStore &&
+                    (this.props.mutationDataStore.isPositionSelected(
+                        proteinPosition
+                    ) ||
+                        this.props.mutationDataStore.isPositionHighlighted(
+                            proteinPosition
+                        ))
+                ),
+            indexedVariantAnnotations: this.props.indexedVariantAnnotations,
+        });
+    }
+
+    private mapProteinToStructurePosition(
+        proteinPosition: number
+    ): number | undefined {
+        if (this.structureSource === StructureSource.ALPHAFOLD) {
+            return proteinPosition;
+        }
+
+        return this.pdbPositionByQueryPosition[proteinPosition];
     }
 
     private getMutationResidueColor(mutations: Mutation[]): string {

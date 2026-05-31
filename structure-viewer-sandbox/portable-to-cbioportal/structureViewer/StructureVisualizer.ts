@@ -7,6 +7,14 @@ export interface IResidueSpec {
     highlighted?: boolean;
 }
 
+export interface IMutationLabelSpec {
+    proteinPosition: number;
+    structurePosition: number;
+    labelText: string;
+    detailLines: string[];
+    highlighted?: boolean;
+}
+
 export enum ProteinScheme {
     CARTOON,
     SPACE_FILLING,
@@ -59,6 +67,7 @@ export interface IStructureVisualizerProps {
     proteinColor: ProteinColor;
     sideChain: SideChain;
     mutationColor: MutationColor;
+    mutationLabels?: IMutationLabelSpec[];
     // when set to false, restricts to protein only (hide other atoms)
     displayBoundMolecules: boolean;
     // PDB database URI
@@ -94,6 +103,7 @@ export interface IStructureVisualizerProps {
         status: StructureLoadStatus,
         message?: string
     ) => void;
+    onMutationLabelClick?: (label: IMutationLabelSpec) => void;
 }
 
 abstract class StructureVisualizer {
