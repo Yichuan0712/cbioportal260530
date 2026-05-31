@@ -18,7 +18,22 @@ export enum CanonicalMutationType {
     OTHER = 'other',
 }
 
-export enum ProteinImpactType {
+export enum VusMutationType {
+    MISSENSE_UNKNOWN_SIGNIFICANCE = 'missense_unknown_significance',
+    MISSENSE_PUTATIVE_DRIVER = 'missense_putative_driver',
+    INFRAME_UNKNOWN_SIGNIFICANCE = 'inframe_unknown_significance',
+    INFRAME_PUTATIVE_DRIVER = 'inframe_putative_driver',
+    TRUNCATING_UNKNOWN_SIGNIFICANCE = 'truncating_unknown_significance',
+    TRUNCATING_PUTATIVE_DRIVER = 'truncating_putative_driver',
+    SPLICE_UNKNOWN_SIGNIFICANCE = 'splice_unknown_significance',
+    SPLICE_PUTATIVE_DRIVER = 'splice_putative_driver',
+    FUSION_UNKNOWN_SIGNIFICANCE = 'fusion_unknown_significance',
+    FUSION_PUTATIVE_DRIVER = 'fusion_putative_driver',
+    OTHER_UNKNOWN_SIGNIFICANCE = 'other_unknown_significance',
+    OTHER_PUTATIVE_DRIVER = 'other_putative_driver',
+}
+
+export enum ProteinImpactWithoutVusMutationType {
     MISSENSE = CanonicalMutationType.MISSENSE,
     TRUNCATING = CanonicalMutationType.TRUNCATING,
     INFRAME = CanonicalMutationType.INFRAME,
@@ -27,6 +42,30 @@ export enum ProteinImpactType {
     OTHER = CanonicalMutationType.OTHER,
 }
 
+export enum ProteinImpactType {
+    MISSENSE = CanonicalMutationType.MISSENSE,
+    TRUNCATING = CanonicalMutationType.TRUNCATING,
+    INFRAME = CanonicalMutationType.INFRAME,
+    SPLICE = CanonicalMutationType.SPLICE_SITE,
+    FUSION = CanonicalMutationType.FUSION,
+    OTHER = CanonicalMutationType.OTHER,
+    MISSENSE_UNKNOWN_SIGNIFICANCE = VusMutationType.MISSENSE_UNKNOWN_SIGNIFICANCE,
+    MISSENSE_PUTATIVE_DRIVER = VusMutationType.MISSENSE_PUTATIVE_DRIVER,
+    INFRAME_UNKNOWN_SIGNIFICANCE = VusMutationType.INFRAME_UNKNOWN_SIGNIFICANCE,
+    INFRAME_PUTATIVE_DRIVER = VusMutationType.INFRAME_PUTATIVE_DRIVER,
+    TRUNCATING_UNKNOWN_SIGNIFICANCE = VusMutationType.TRUNCATING_UNKNOWN_SIGNIFICANCE,
+    TRUNCATING_PUTATIVE_DRIVER = VusMutationType.TRUNCATING_PUTATIVE_DRIVER,
+    SPLICE_UNKNOWN_SIGNIFICANCE = VusMutationType.SPLICE_UNKNOWN_SIGNIFICANCE,
+    SPLICE_PUTATIVE_DRIVER = VusMutationType.SPLICE_PUTATIVE_DRIVER,
+    FUSION_UNKNOWN_SIGNIFICANCE = VusMutationType.FUSION_UNKNOWN_SIGNIFICANCE,
+    FUSION_PUTATIVE_DRIVER = VusMutationType.FUSION_PUTATIVE_DRIVER,
+    OTHER_UNKNOWN_SIGNIFICANCE = VusMutationType.OTHER_UNKNOWN_SIGNIFICANCE,
+    OTHER_PUTATIVE_DRIVER = VusMutationType.OTHER_PUTATIVE_DRIVER,
+}
+export enum DriverVsVusType {
+    DRIVER = 'driver',
+    VUS = 'VUS',
+}
 export const CANONICAL_MUTATION_TYPE_MAP: {
     [lowerCaseType: string]: CanonicalMutationType;
 } = {
@@ -83,6 +122,12 @@ export const CANONICAL_MUTATION_TYPE_MAP: {
     other: CanonicalMutationType.OTHER,
 };
 
+export function getProteinImpactType(mutationType: string): ProteinImpactType {
+    return getProteinImpactTypeFromCanonical(
+        getCanonicalMutationType(mutationType)
+    );
+}
+
 export function getProteinImpactTypeFromCanonical(
     mutationType: CanonicalMutationType
 ): ProteinImpactType {
@@ -111,7 +156,6 @@ export function getProteinImpactTypeFromCanonical(
             return ProteinImpactType.OTHER;
     }
 }
-
 export function getCanonicalMutationType(
     mutationType: string
 ): CanonicalMutationType {
@@ -127,3 +171,5 @@ export const CanonicalMutationTypeList: CanonicalMutationType[] = _.chain(
     .values()
     .uniq()
     .value();
+
+export default getCanonicalMutationType;

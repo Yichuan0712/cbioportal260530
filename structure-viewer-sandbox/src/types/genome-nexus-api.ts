@@ -77,6 +77,33 @@ export interface HotspotAnnotation {
     annotation?: Array<{ hugoSymbol?: string; transcriptId?: string }>;
 }
 
+export interface Hotspot {
+    type: string;
+    proteinPosStart?: number;
+    proteinPosEnd?: number;
+    hugoSymbol?: string;
+    transcriptId?: string;
+}
+
+export interface AggregatedHotspots {
+    genomicLocation: GenomicLocation;
+    hotspots: Hotspot[];
+    variant?: string;
+}
+
+export type IHotspotIndex = {
+    [genomicLocation: string]: AggregatedHotspots;
+};
+
+export interface IndicatorQueryResp {
+    oncogenic?: string;
+}
+
+export interface OncokbAnnotation {
+    annotation?: IndicatorQueryResp;
+    license?: string;
+}
+
 export interface ClinvarAnnotation {
     annotation?: {
         clinvarEntries?: Array<{
@@ -91,6 +118,7 @@ export interface VariantAnnotation {
     annotation_summary?: VariantAnnotationSummary;
     clinvar?: ClinvarAnnotation;
     hotspots?: HotspotAnnotation;
+    oncokb?: OncokbAnnotation;
     mutation_assessor?: MutationAssessor;
     originalVariantQuery?: string;
     seq_region_name?: string;

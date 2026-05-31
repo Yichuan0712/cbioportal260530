@@ -4,6 +4,19 @@ export interface Gene {
     type?: string;
 }
 
+export interface MolecularProfile {
+    molecularProfileId: string;
+    studyId: string;
+    molecularAlterationType?: string;
+    name?: string;
+}
+
+export interface Sample {
+    sampleId: string;
+    studyId: string;
+    patientId?: string;
+}
+
 export interface Mutation {
     alleleSpecificCopyNumber?: unknown;
     aminoAcidChange?: string;

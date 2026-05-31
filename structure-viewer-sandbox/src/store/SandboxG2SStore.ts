@@ -1,7 +1,8 @@
-import { action, makeObservable, observable } from 'mobx';
+import { action, makeObservable, observable, runInAction } from 'mobx';
 import _ from 'lodash';
 import PdbChainDataStore from 'shared/components/mutationMapper/PdbChainDataStore';
 import MutationMapperDataStore from 'shared/components/mutationMapper/MutationMapperDataStore';
+import SandboxMutationMapperFilterApplier from 'shared/components/mutationMapper/SandboxMutationMapperFilterApplier';
 import ResidueMappingCache from 'shared/cache/ResidueMappingCache';
 import PdbHeaderCache from 'shared/cache/PdbHeaderCache';
 import LivePdbHeaderCache from 'shared/cache/LivePdbHeaderCache';
@@ -15,15 +16,22 @@ import { Alignment, VariantAnnotation } from 'genome-nexus-ts-api-client';
 import { Mutation } from 'cbioportal-ts-api-client';
 import { fetchAlignmentsByEnsembl } from '../api/g2sApi';
 import { fetchCanonicalTranscriptByHugoSymbol } from '../api/genomeNexusApi';
-import { fetchGeneByHugoSymbol, fetchMutationsForGene } from '../api/cbioportalApi';
+import { fetchGeneByHugoSymbol, fetchMutationsForGene, fetchMutationMolecularProfilesForStudies, fetchSamplesForStudies } from '../api/cbioportalApi';
 import { fetchVariantAnnotationsIndexedByGenomicLocation } from '../api/variantAnnotationApi';
+import { fetchHotspotIndexForMutations } from '../api/hotspotApi';
 import {
     groupMutationsByProteinStart,
     countMutationsInRange,
 } from '../api/mutationUtils';
 import {
+    annotateMutationsWithPutativeDriver,
+    isPutativeDriverMutation,
+} from '../lib/putativeDriverUtils';
+import { somaticMutationRate } from '../lib/mutationRateUtils';
+import {
     SANDBOX_HUGO_GENE,
     SANDBOX_PREFERRED_PDB,
+    CBIOPORTAL_STUDY_IDS,
     USE_MOCK_G2S_DATA,
     USE_MOCK_MUTATIONS,
 } from '../api/sandboxApiConfig';
@@ -39,8 +47,23 @@ import { PdbAlignmentIndex } from 'shared/model/Pdb';
 
 export type SandboxLoadStatus = 'idle' | 'pending' | 'complete' | 'error';
 
-function createMockMutationStore() {
-    return new MutationMapperDataStore(MOCK_MUTATIONS);
+function createMockMutationStore(
+    indexedVariantAnnotations: {
+        [genomicLocation: string]: VariantAnnotation;
+    } = MOCK_VARIANT_ANNOTATIONS
+) {
+    const flatMutations = _.flatten(MOCK_MUTATIONS);
+    const annotated = annotateMutationsWithPutativeDriver(
+        flatMutations,
+        indexedVariantAnnotations,
+        {}
+    );
+    const grouped = groupMutationsByProteinStart(annotated);
+
+    return new MutationMapperDataStore(
+        grouped,
+        new SandboxMutationMapperFilterApplier(isPutativeDriverMutation)
+    );
 }
 
 function createMockPdbStores() {
@@ -61,6 +84,7 @@ export default class SandboxG2SStore {
     @observable ensemblTranscriptId: string = '';
     @observable mutationCount: number = 0;
     @observable mappedMutationCount: number = 0;
+    @observable somaticMutationRatePercent: number | null = null;
 
     @observable.ref pdbChainDataStore: PdbChainDataStore;
     @observable.ref mutationDataStore: MutationMapperDataStore;
@@ -85,6 +109,7 @@ export default class SandboxG2SStore {
             : new LivePdbHeaderCache();
     }
 
+    @action.bound
     async initialize(): Promise<void> {
         if (USE_MOCK_G2S_DATA && USE_MOCK_MUTATIONS) {
             this.status = 'complete';
@@ -105,56 +130,110 @@ export default class SandboxG2SStore {
                 );
                 transcriptId = transcript.transcriptId;
                 uniprotId = transcript.uniprotId;
-                this.ensemblTranscriptId = transcriptId;
-                this.uniprotId = uniprotId;
+                runInAction(() => {
+                    this.ensemblTranscriptId = transcriptId;
+                    this.uniprotId = uniprotId;
+                });
 
                 const alignments = await fetchAlignmentsByEnsembl(transcriptId);
-                if (!alignments || alignments.length === 0) {
-                    this.pdbChainDataStore = new PdbChainDataStore([]);
-                    this.pdbAlignmentIndex = {};
-                } else {
-                    this.applyAlignments(alignments);
-                }
+                runInAction(() => {
+                    if (!alignments || alignments.length === 0) {
+                        this.pdbChainDataStore = new PdbChainDataStore([]);
+                        this.pdbAlignmentIndex = {};
+                    } else {
+                        this.applyAlignments(alignments);
+                    }
+                });
             }
 
             if (!USE_MOCK_MUTATIONS) {
                 await this.loadMutations(uniprotId);
             }
 
-            this.status = 'complete';
+            runInAction(() => {
+                this.status = 'complete';
+            });
         } catch (error) {
-            this.status = 'error';
-            this.errorMessage =
-                error instanceof Error ? error.message : String(error);
+            runInAction(() => {
+                this.status = 'error';
+                this.errorMessage =
+                    error instanceof Error ? error.message : String(error);
+            });
         }
     }
 
-    @action
     private async loadMutations(_uniprotId: string) {
         const gene = await fetchGeneByHugoSymbol(SANDBOX_HUGO_GENE);
-        const rawMutations = await fetchMutationsForGene(gene.entrezGeneId);
-        this.mutationCount = rawMutations.length;
+        const [rawMutations, molecularProfiles, cohortSamples] =
+            await Promise.all([
+                fetchMutationsForGene(gene.entrezGeneId),
+                fetchMutationMolecularProfilesForStudies(CBIOPORTAL_STUDY_IDS),
+                fetchSamplesForStudies(CBIOPORTAL_STUDY_IDS),
+            ]);
 
+        let indexedVariantAnnotations: {
+            [genomicLocation: string]: VariantAnnotation;
+        } = {};
+        let hotspotIndex = {};
         try {
-            this.indexedVariantAnnotations =
-                await fetchVariantAnnotationsIndexedByGenomicLocation(
+            [indexedVariantAnnotations, hotspotIndex] = await Promise.all([
+                fetchVariantAnnotationsIndexedByGenomicLocation(rawMutations),
+                fetchHotspotIndexForMutations(rawMutations),
+            ]);
+        } catch (error) {
+            console.warn('Mutation annotation fetch failed:', error);
+            try {
+                indexedVariantAnnotations =
+                    await fetchVariantAnnotationsIndexedByGenomicLocation(
+                        rawMutations
+                    );
+            } catch (innerError) {
+                console.warn('Variant annotation fetch failed:', innerError);
+            }
+            try {
+                hotspotIndex = await fetchHotspotIndexForMutations(
                     rawMutations
                 );
-        } catch (error) {
-            console.warn('Variant annotation fetch failed:', error);
-            this.indexedVariantAnnotations = {};
+            } catch (innerError) {
+                console.warn('Hotspot annotation fetch failed:', innerError);
+            }
         }
+
+        const annotatedMutations = annotateMutationsWithPutativeDriver(
+            rawMutations,
+            indexedVariantAnnotations,
+            hotspotIndex
+        );
 
         const chain =
             this.pdbChainDataStore.selectedChain ||
             this.pdbChainDataStore.allData[0];
-        const grouped = groupMutationsByProteinStart(rawMutations);
-
-        this.mappedMutationCount = chain
-            ? countMutationsInRange(rawMutations, chain)
+        const grouped = groupMutationsByProteinStart(annotatedMutations);
+        const mappedMutationCount = chain
+            ? countMutationsInRange(annotatedMutations, chain)
             : 0;
+        const mutationDataStore = new MutationMapperDataStore(
+            grouped,
+            new SandboxMutationMapperFilterApplier(isPutativeDriverMutation)
+        );
+        const profileMap = _.keyBy(
+            molecularProfiles,
+            profile => profile.molecularProfileId
+        );
+        const rate = somaticMutationRate(
+            SANDBOX_HUGO_GENE,
+            annotatedMutations,
+            profileMap,
+            cohortSamples
+        );
 
-        this.mutationDataStore = new MutationMapperDataStore(grouped);
+        runInAction(() => {
+            this.mutationCount = annotatedMutations.length;
+            this.indexedVariantAnnotations = indexedVariantAnnotations;
+            this.mappedMutationCount = mappedMutationCount;
+            this.mutationDataStore = mutationDataStore;
+            this.somaticMutationRatePercent = rate;
+        });
     }
 
     @action

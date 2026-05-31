@@ -14,6 +14,7 @@ export const DEFAULT_VARIANT_ANNOTATION_FIELDS = [
     'hotspots',
     'mutation_assessor',
     'clinvar',
+    'oncokb',
 ] as const;
 
 async function parseJson<T>(response: Response): Promise<T> {

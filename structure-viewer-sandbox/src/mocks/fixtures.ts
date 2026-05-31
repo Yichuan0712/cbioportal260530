@@ -1,6 +1,7 @@
 import { Alignment, PdbHeader, ResidueMapping, VariantAnnotation } from 'genome-nexus-ts-api-client';
 import { Mutation } from 'cbioportal-ts-api-client';
 import { IPdbChain, PdbAlignmentIndex } from 'shared/model/Pdb';
+import { PUTATIVE_DRIVER } from '../lib/putativeDriverUtils';
 
 /** SOX9 — matches screenshot transcript NM_000346 / ENST00000245479 */
 export const MOCK_UNIPROT_ID = 'P48436';
@@ -48,6 +49,8 @@ export const MOCK_MUTATIONS: Mutation[][] = [
             referenceAllele: 'G',
             variantAllele: 'A',
             gene: { hugoGeneSymbol: 'SOX9', entrezGeneId: 6662 },
+            driverFilter: PUTATIVE_DRIVER,
+            driverFilterAnnotation: 'Putative Driver',
         },
     ],
     [
@@ -93,7 +96,12 @@ export const MOCK_VARIANT_ANNOTATIONS: {
             functionalImpactScore: 2.1,
             hgvspShort: 'R280Q',
         },
-        hotspots: { annotation: [] },
+        hotspots: {
+            annotation: [{ hugoSymbol: 'SOX9', transcriptId: 'ENST00000245479' }],
+        },
+        oncokb: {
+            annotation: { oncogenic: 'Likely Oncogenic' },
+        },
         clinvar: {
             annotation: {
                 clinvarEntries: [

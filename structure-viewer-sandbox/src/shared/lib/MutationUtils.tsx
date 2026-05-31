@@ -1,3 +1,4 @@
+import * as React from 'react';
 import _ from 'lodash';
 import { Mutation } from 'cbioportal-ts-api-client';
 import {
@@ -5,6 +6,81 @@ import {
     getColorForProteinImpactType as getDefaultColorForProteinImpactType,
     IProteinImpactTypeColors,
 } from '../../lib/proteinImpact';
+import {
+    DriverVsVusType,
+    MUT_DRIVER,
+    MUT_VUS,
+    ProteinImpactType,
+} from 'cbioportal-frontend-commons';
+
+export const SELECTOR_VALUE_WITH_VUS = [
+    ProteinImpactType.MISSENSE,
+    ProteinImpactType.MISSENSE_PUTATIVE_DRIVER,
+    ProteinImpactType.MISSENSE_UNKNOWN_SIGNIFICANCE,
+    ProteinImpactType.TRUNCATING,
+    ProteinImpactType.TRUNCATING_PUTATIVE_DRIVER,
+    ProteinImpactType.TRUNCATING_UNKNOWN_SIGNIFICANCE,
+    ProteinImpactType.INFRAME,
+    ProteinImpactType.INFRAME_PUTATIVE_DRIVER,
+    ProteinImpactType.INFRAME_UNKNOWN_SIGNIFICANCE,
+    ProteinImpactType.SPLICE,
+    ProteinImpactType.SPLICE_PUTATIVE_DRIVER,
+    ProteinImpactType.SPLICE_UNKNOWN_SIGNIFICANCE,
+    ProteinImpactType.FUSION,
+    ProteinImpactType.FUSION_PUTATIVE_DRIVER,
+    ProteinImpactType.FUSION_UNKNOWN_SIGNIFICANCE,
+    ProteinImpactType.OTHER,
+    ProteinImpactType.OTHER_PUTATIVE_DRIVER,
+    ProteinImpactType.OTHER_UNKNOWN_SIGNIFICANCE,
+];
+
+export function getProteinImpactTypeOptionDisplayValueMap(proteinImpactTypeColorMap: {
+    [proteinImpactType: string]: string;
+}): { [proteinImpactType: string]: JSX.Element } {
+    const types = [
+        ...SELECTOR_VALUE_WITH_VUS,
+        DriverVsVusType.DRIVER,
+        DriverVsVusType.VUS,
+    ];
+    return _(types)
+        .keyBy()
+        .mapValues(cur => (
+            <strong style={{ color: proteinImpactTypeColorMap[cur] }}>
+                {cur.split('_')[0].replace(/^./, s => s.toUpperCase())}
+            </strong>
+        ))
+        .value();
+}
+
+export function getProteinImpactTypeColorMap(
+    colors: IProteinImpactTypeColors
+): { [proteinImpactType: string]: string } {
+    return {
+        [ProteinImpactType.MISSENSE]: colors.missenseColor,
+        [ProteinImpactType.MISSENSE_PUTATIVE_DRIVER]: colors.missenseColor,
+        [ProteinImpactType.MISSENSE_UNKNOWN_SIGNIFICANCE]:
+            colors.missenseVusColor,
+        [ProteinImpactType.TRUNCATING]: colors.truncatingColor,
+        [ProteinImpactType.TRUNCATING_PUTATIVE_DRIVER]: colors.truncatingColor,
+        [ProteinImpactType.TRUNCATING_UNKNOWN_SIGNIFICANCE]:
+            colors.truncatingVusColor,
+        [ProteinImpactType.INFRAME]: colors.inframeColor,
+        [ProteinImpactType.INFRAME_PUTATIVE_DRIVER]: colors.inframeColor,
+        [ProteinImpactType.INFRAME_UNKNOWN_SIGNIFICANCE]:
+            colors.inframeVusColor,
+        [ProteinImpactType.SPLICE]: colors.spliceColor,
+        [ProteinImpactType.SPLICE_PUTATIVE_DRIVER]: colors.spliceColor,
+        [ProteinImpactType.SPLICE_UNKNOWN_SIGNIFICANCE]: colors.spliceVusColor,
+        [ProteinImpactType.FUSION]: colors.fusionColor,
+        [ProteinImpactType.FUSION_PUTATIVE_DRIVER]: colors.fusionColor,
+        [ProteinImpactType.FUSION_UNKNOWN_SIGNIFICANCE]: colors.fusionVusColor,
+        [ProteinImpactType.OTHER]: colors.otherColor,
+        [ProteinImpactType.OTHER_PUTATIVE_DRIVER]: colors.otherColor,
+        [ProteinImpactType.OTHER_UNKNOWN_SIGNIFICANCE]: colors.otherVusColor,
+        [DriverVsVusType.DRIVER]: MUT_DRIVER,
+        [DriverVsVusType.VUS]: MUT_VUS,
+    };
+}
 
 export function groupMutationsByProteinStartPos(
     mutationData: Mutation[][]
@@ -67,3 +143,6 @@ export function getColorForProteinImpactType(
         isPutativeDriver
     );
 }
+
+export type { IProteinImpactTypeColors };
+export { DEFAULT_PROTEIN_IMPACT_TYPE_COLORS };

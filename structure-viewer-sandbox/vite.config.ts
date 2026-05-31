@@ -34,9 +34,10 @@ export default defineConfig({
                 __dirname,
                 'src/types/cbioportal-api.ts'
             ),
+            lib: path.resolve(__dirname, 'src/lib'),
             'react-mutation-mapper': path.resolve(
                 __dirname,
-                'src/lib/proteinImpact.ts'
+                'src/lib/react-mutation-mapper/index.ts'
             ),
         },
     },

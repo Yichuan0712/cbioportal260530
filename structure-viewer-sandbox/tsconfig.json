@@ -23,7 +23,8 @@
       "cbioportal-frontend-commons": ["src/commons/index.ts"],
       "genome-nexus-ts-api-client": ["src/types/genome-nexus-api.ts"],
       "cbioportal-ts-api-client": ["src/types/cbioportal-api.ts"],
-      "react-mutation-mapper": ["src/lib/proteinImpact.ts"]
+      "lib/*": ["src/lib/*"],
+      "react-mutation-mapper": ["src/lib/react-mutation-mapper/index.ts"]
     }
   },
   "include": ["src"]

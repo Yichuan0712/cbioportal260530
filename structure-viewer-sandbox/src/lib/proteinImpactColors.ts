@@ -13,6 +13,7 @@ export interface IProteinImpactTypeColors {
     otherVusColor: string;
 }
 
+/** Same palette as cBioPortal AlterationColors / v0530 sandbox. */
 export const DEFAULT_PROTEIN_IMPACT_TYPE_COLORS: IProteinImpactTypeColors = {
     missenseColor: '#008000',
     missenseVusColor: '#53D400',

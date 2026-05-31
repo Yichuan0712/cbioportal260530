@@ -1,15 +1,16 @@
 import _ from 'lodash';
-import { Gene, Mutation } from 'cbioportal-ts-api-client';
+import { Gene, Mutation, Sample } from 'cbioportal-ts-api-client';
 import {
     CBIOPORTAL_API_BASE,
     CBIOPORTAL_MUTATION_PROFILE_IDS,
     CBIOPORTAL_STUDY_IDS,
 } from './sandboxApiConfig';
 
-type MolecularProfileSummary = {
+export type MolecularProfileSummary = {
     molecularProfileId: string;
     molecularAlterationType: string;
     studyId: string;
+    name?: string;
 };
 
 async function parseJson<T>(response: Response): Promise<T> {
@@ -41,6 +42,22 @@ export async function fetchMolecularProfilesForStudy(
 }
 
 /** Resolve mutation molecular profile IDs from study IDs (official API, same as Results View data source). */
+export async function fetchMutationMolecularProfilesForStudies(
+    studyIds: string[] = CBIOPORTAL_STUDY_IDS
+): Promise<MolecularProfileSummary[]> {
+    if (studyIds.length === 0) {
+        return [];
+    }
+
+    const profilesByStudy = await Promise.all(
+        studyIds.map(studyId => fetchMolecularProfilesForStudy(studyId))
+    );
+
+    return profilesByStudy
+        .flat()
+        .filter(p => p.molecularAlterationType === 'MUTATION_EXTENDED');
+}
+
 export async function resolveMutationProfileIdsForStudies(
     studyIds: string[] = CBIOPORTAL_STUDY_IDS
 ): Promise<string[]> {
@@ -48,15 +65,32 @@ export async function resolveMutationProfileIdsForStudies(
         return CBIOPORTAL_MUTATION_PROFILE_IDS;
     }
 
-    const profilesByStudy = await Promise.all(
-        studyIds.map(studyId => fetchMolecularProfilesForStudy(studyId))
-    );
-
     return _.uniq(
-        profilesByStudy
-            .flat()
-            .filter(p => p.molecularAlterationType === 'MUTATION_EXTENDED')
-            .map(p => p.molecularProfileId)
+        (await fetchMutationMolecularProfilesForStudies(studyIds)).map(
+            p => p.molecularProfileId
+        )
+    );
+}
+
+export async function fetchSamplesForStudies(
+    studyIds: string[] = CBIOPORTAL_STUDY_IDS
+): Promise<Sample[]> {
+    if (studyIds.length === 0) {
+        return [];
+    }
+
+    const sampleListIds = studyIds.map(studyId => `${studyId}_all`);
+    const url = `${CBIOPORTAL_API_BASE}/api/samples/fetch?projection=SUMMARY`;
+
+    return parseJson<Sample[]>(
+        await fetch(url, {
+            method: 'POST',
+            headers: {
+                Accept: 'application/json',
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ sampleListIds }),
+        })
     );
 }
 

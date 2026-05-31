@@ -115,6 +115,11 @@ export class SimpleGetterLazyMobXTableApplicationDataStore<T>
         return getVisibileData(this.tableData, this.itemsPerPage, this.page);
     }
 
+    @action
+    public resetFilter() {
+        this.dataFilter = () => true;
+    }
+
     @action public setFilter(
         fn: (
             d: T,
