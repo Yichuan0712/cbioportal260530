@@ -19,11 +19,13 @@ export enum ProteinScheme {
 // SECONDARY_STRUCTURE: not effective for space-filling scheme
 // ATOM_TYPE: effective only for space-filling scheme
 // NC_RAINBOW: not effective for space-filling scheme
+// PLDDT: AlphaFold only — colors by per-residue pLDDT (mmCIF B-factor)
 export enum ProteinColor {
     UNIFORM,
     SECONDARY_STRUCTURE,
     NC_RAINBOW,
     ATOM_TYPE,
+    PLDDT,
 }
 
 // SELECTED: display side chain for only selected mutations
@@ -44,6 +46,11 @@ export enum MutationColor {
     NONE,
 }
 
+export enum StructureSource {
+    PDB,
+    ALPHAFOLD,
+}
+
 export interface IStructureVisualizerProps {
     proteinScheme: ProteinScheme;
     proteinColor: ProteinColor;
@@ -53,6 +60,8 @@ export interface IStructureVisualizerProps {
     displayBoundMolecules: boolean;
     // PDB database URI
     pdbUri?: string;
+    // AlphaFold model files base URL (mmCIF/PDB)
+    alphafoldFilesBaseUrl?: string;
     // base color of the whole structure
     baseColor?: string;
     // background color
@@ -74,11 +83,14 @@ export interface IStructureVisualizerProps {
     uniformMutationColor?: string;
     // color of the user-selected mutations
     highlightColor?: string;
+    /** When ALPHAFOLD, enables pLDDT coloring and other source-specific behavior. */
+    structureSource?: StructureSource;
 }
 
 abstract class StructureVisualizer {
     public static defaultProps = {
         pdbUri: 'https://files.rcsb.org/view/',
+        alphafoldFilesBaseUrl: 'https://alphafold.ebi.ac.uk/files',
         proteinScheme: ProteinScheme.CARTOON,
         displayBoundMolecules: true,
         backgroundColor: '#FFFFFF',

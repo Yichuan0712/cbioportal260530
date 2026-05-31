@@ -46,7 +46,7 @@ npm run dev
 ## 后续改造建议
 
 1. 在 `StructureViewerPanel` 外包一层，用扁平 props 替代 Store 依赖
-2. 在 `StructureVisualizer3D.loadPdb()` 旁增加 AlphaFold mmCIF 加载
+2. ~~在 `StructureVisualizer3D.loadPdb()` 旁增加 AlphaFold mmCIF 加载~~ — **已支持**：面板 **Structure source** 下拉可选 PDB / AlphaFold（默认 PDB）
 3. 验证通过后再回灌 `cbioportal-frontend`
 
 ## 技术栈

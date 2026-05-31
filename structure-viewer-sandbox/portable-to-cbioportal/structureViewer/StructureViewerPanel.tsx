@@ -28,14 +28,18 @@ import {
 } from 'shared/lib/MutationUtils';
 import StructureViewer from './StructureViewer';
 import PdbChainInfo from '../PdbChainInfo';
+import AlphaFoldChainInfo from './AlphaFoldChainInfo';
 import {
     ProteinScheme,
     ProteinColor,
     SideChain,
     MutationColor,
+    StructureSource,
     IResidueSpec,
 } from './StructureVisualizer';
 import PyMolScriptGenerator from './PyMolScriptGenerator';
+import { ALPHAFOLD_DEFAULT_CHAIN, getAlphaFoldModelId } from './AlphaFoldUtils';
+import { ALPHAFOLD_PLDDT_LEGEND } from './AlphaFoldPlddtUtils';
 
 import styles from './structureViewer.module.scss';
 import { getServerConfig } from 'config/config';
@@ -47,6 +51,10 @@ export interface IStructureViewerPanelProps extends IProteinImpactTypeColors {
     pdbHeaderCache?: PdbHeaderCache;
     residueMappingCache?: ResidueMappingCache;
     uniprotId?: string;
+    /** Override AlphaFold file base URL (sandbox dev uses `/alphafold-files` proxy). */
+    alphafoldFilesBaseUrl?: string;
+    /** Override AlphaFold metadata API base (sandbox dev uses `/alphafold-api` proxy). */
+    alphafoldApiBaseUrl?: string;
     onClose?: () => void;
 }
 
@@ -62,7 +70,10 @@ export default class StructureViewerPanel extends React.Component<
     @observable protected sideChain: SideChain = SideChain.SELECTED;
     @observable protected mutationColor: MutationColor =
         MutationColor.MUTATION_TYPE;
+    @observable protected structureSource: StructureSource =
+        StructureSource.PDB;
     @observable protected displayBoundMolecules: boolean = true;
+    @observable protected displayPlddtColoring: boolean = false;
 
     protected _3dMolDiv: HTMLDivElement | undefined;
 
@@ -88,6 +99,10 @@ export default class StructureViewerPanel extends React.Component<
             this
         );
         this.handlePyMolDownload = this.handlePyMolDownload.bind(this);
+        this.handleStructureSourceChange = this.handleStructureSourceChange.bind(
+            this
+        );
+        this.handlePlddtColorChange = this.handlePlddtColorChange.bind(this);
     }
 
     public selectionTitle(
@@ -217,6 +232,28 @@ export default class StructureViewerPanel extends React.Component<
         );
     }
 
+    public plddtTooltipContent() {
+        return (
+            <div style={{ maxWidth: 400, maxHeight: 200, overflowY: 'auto' }}>
+                Colors each residue by AlphaFold predicted local distance
+                difference test (pLDDT) scores from the model B-factor column.{' '}
+                <br />
+                <br />
+                <ul className={styles['plddt-legend-list']}>
+                    {ALPHAFOLD_PLDDT_LEGEND.map(item => (
+                        <li key={item.label}>
+                            <span
+                                className={styles['plddt-swatch']}
+                                style={{ backgroundColor: item.color }}
+                            />
+                            {item.label}
+                        </li>
+                    ))}
+                </ul>
+            </div>
+        );
+    }
+
     public helpTooltipContent() {
         return (
             <div style={{ maxWidth: 400, maxHeight: 200, overflowY: 'auto' }}>
@@ -234,6 +271,63 @@ export default class StructureViewerPanel extends React.Component<
         );
     }
 
+    public structureSourceTooltipContent() {
+        return (
+            <div style={{ maxWidth: 400, maxHeight: 200, overflowY: 'auto' }}>
+                <b>PDB:</b> Experimental structure from the Protein Data Bank
+                (via G2S alignment). <br />
+                <b>AlphaFold:</b> Predicted full-length structure from the
+                AlphaFold Database (mutations mapped by protein position until
+                G2S AlphaFold alignment is available).
+            </div>
+        );
+    }
+
+    public structureSourceMenu() {
+        return (
+            <span>
+                <div className="row">
+                    <div className="col col-sm-12">
+                        <div className="row">
+                            {this.selectionTitle(
+                                'Structure source',
+                                this.structureSourceTooltipContent()
+                            )}
+                        </div>
+                        <div className="row">
+                            <FormControl
+                                className={styles['default-option-select']}
+                                componentClass="select"
+                                value={`${this.structureSource}`}
+                                onChange={
+                                    this
+                                        .handleStructureSourceChange as React.FormEventHandler<
+                                        any
+                                    >
+                                }
+                            >
+                                <option value={StructureSource.PDB}>
+                                    PDB (experimental)
+                                </option>
+                                <option
+                                    value={StructureSource.ALPHAFOLD}
+                                    disabled={!this.props.uniprotId}
+                                >
+                                    AlphaFold (predicted)
+                                </option>
+                            </FormControl>
+                        </div>
+                    </div>
+                </div>
+                <div className="row">
+                    <div className="col col-sm-10 col-sm-offset-1">
+                        <hr />
+                    </div>
+                </div>
+            </span>
+        );
+    }
+
     public proteinStyleMenu() {
         return (
             <span>
@@ -244,22 +338,6 @@ export default class StructureViewerPanel extends React.Component<
                     <div className="col col-sm-10 col-sm-offset-1">
                         <hr />
                     </div>
-                </div>
-                <div className="row">
-                    <Checkbox
-                        checked={this.displayBoundMolecules}
-                        onChange={
-                            this
-                                .handleBoundMoleculeChange as React.FormEventHandler<
-                                any
-                            >
-                        }
-                    >
-                        Display bound molecules{' '}
-                        {this.defaultInfoTooltip(
-                            this.boundMoleculesTooltipContent()
-                        )}
-                    </Checkbox>
                 </div>
                 <div className="row">
                     <div className="col col-sm-6">
@@ -338,6 +416,41 @@ export default class StructureViewerPanel extends React.Component<
                 </div>
             </span>
         );
+    }
+
+    public structureDisplayOptions() {
+        if (this.structureSource === StructureSource.PDB) {
+            return (
+                <Checkbox
+                    checked={this.displayBoundMolecules}
+                    onChange={
+                        this
+                            .handleBoundMoleculeChange as React.FormEventHandler<
+                            any
+                        >
+                    }
+                >
+                    Display bound molecules{' '}
+                    {this.defaultInfoTooltip(
+                        this.boundMoleculesTooltipContent()
+                    )}
+                </Checkbox>
+            );
+        }
+
+        if (this.structureSource === StructureSource.ALPHAFOLD) {
+            return (
+                <Checkbox
+                    checked={this.colorByPlddtEnabled}
+                    onChange={this.handlePlddtColorChange}
+                >
+                    Display pLDDT coloring{' '}
+                    {this.defaultInfoTooltip(this.plddtTooltipContent())}
+                </Checkbox>
+            );
+        }
+
+        return null;
     }
 
     public mutationStyleMenu() {
@@ -481,17 +594,21 @@ export default class StructureViewerPanel extends React.Component<
     }
 
     public mainContent() {
-        if (this.pdbId && this.chainId && this.residues) {
-            // load pdb info & 3D visualizer
+        if (this.isStructureViewerReady) {
             return (
                 <span>
-                    <div className="row">
-                        <PdbChainInfo
-                            pdbId={this.pdbId}
-                            chainId={this.chainId}
-                            cache={this.props.pdbHeaderCache}
-                            truncateText={true}
-                        />
+                    <div className="row">{this.structureInfoContent()}</div>
+                    <div
+                        className={classnames(
+                            'row',
+                            styles['structure-display-options-row']
+                        )}
+                    >
+                        <div className="col col-sm-12">
+                            <div className="row">
+                                {this.structureDisplayOptions()}
+                            </div>
+                        </div>
                     </div>
                     <If condition={this.residueWarning.length > 0}>
                         <div className="row">
@@ -507,14 +624,20 @@ export default class StructureViewerPanel extends React.Component<
                         style={{ paddingTop: 5, paddingBottom: 5 }}
                     >
                         <StructureViewer
-                            displayBoundMolecules={this.displayBoundMolecules}
+                            structureSource={this.structureSource}
+                            displayBoundMolecules={
+                                this.structureSource === StructureSource.PDB &&
+                                this.displayBoundMolecules
+                            }
                             proteinScheme={this.proteinScheme}
-                            proteinColor={this.proteinColor}
+                            proteinColor={this.effectiveProteinColor}
                             sideChain={this.sideChain}
                             mutationColor={this.mutationColor}
-                            pdbId={this.pdbId}
-                            chainId={this.chainId}
-                            residues={this.residues}
+                            pdbId={this.viewerPdbId || ''}
+                            uniprotId={this.props.uniprotId}
+                            chainId={this.viewerChainId || ''}
+                            residues={this.viewerResidues}
+                            alphafoldFilesBaseUrl={this.props.alphafoldFilesBaseUrl}
                             bounds={this.structureViewerBounds}
                             containerRef={this.containerRefHandler}
                         />
@@ -554,6 +677,7 @@ export default class StructureViewerPanel extends React.Component<
                             [styles['collapsed-panel']]: this.isCollapsed,
                         })}
                     >
+                        {this.structureSourceMenu()}
                         {this.mainContent()}
                         <div className="row">
                             {this.topToolbar()}
@@ -631,9 +755,59 @@ export default class StructureViewerPanel extends React.Component<
         this.displayBoundMolecules = !this.displayBoundMolecules;
     }
 
-    private handlePyMolDownload() {
+    private handlePlddtColorChange(evt: React.FormEvent<HTMLInputElement>) {
+        this.displayPlddtColoring = (evt.target as HTMLInputElement).checked;
+    }
+
+    private handleStructureSourceChange(evt: React.FormEvent<HTMLSelectElement>) {
+        this.structureSource = parseInt(
+            (evt.target as HTMLSelectElement).value,
+            10
+        );
+
+        if (this.structureSource === StructureSource.PDB) {
+            this.displayPlddtColoring = false;
+        }
+    }
+
+    public structureInfoContent() {
+        if (
+            this.structureSource === StructureSource.ALPHAFOLD &&
+            this.props.uniprotId &&
+            this.viewerChainId
+        ) {
+            return (
+                <AlphaFoldChainInfo
+                    uniprotId={this.props.uniprotId}
+                    chainId={this.viewerChainId}
+                    truncateText={true}
+                    alphafoldApiBaseUrl={this.props.alphafoldApiBaseUrl}
+                />
+            );
+        }
+
         if (this.pdbId && this.chainId) {
-            const filename = `${this.pdbId}_${this.chainId}.pml`;
+            return (
+                <PdbChainInfo
+                    pdbId={this.pdbId}
+                    chainId={this.chainId}
+                    cache={this.props.pdbHeaderCache}
+                    truncateText={true}
+                />
+            );
+        }
+
+        return null;
+    }
+
+    private handlePyMolDownload() {
+        if (this.viewerChainId && this.pyMolStructureId) {
+            const filename =
+                this.structureSource === StructureSource.ALPHAFOLD
+                    ? `${getAlphaFoldModelId(this.props.uniprotId || '')}_${
+                          this.viewerChainId
+                      }.pml`
+                    : `${this.pdbId}_${this.viewerChainId}.pml`;
             fileDownload(this.pyMolScript, filename);
         }
     }
@@ -662,6 +836,83 @@ export default class StructureViewerPanel extends React.Component<
         }
 
         return { width, height };
+    }
+
+    @computed get isStructureViewerReady(): boolean {
+        if (this.structureSource === StructureSource.ALPHAFOLD) {
+            return !!this.props.uniprotId;
+        }
+
+        return !!(
+            this.pdbId &&
+            this.chainId &&
+            this.residues !== undefined
+        );
+    }
+
+    @computed get viewerChainId(): string | undefined {
+        if (this.structureSource === StructureSource.ALPHAFOLD) {
+            return ALPHAFOLD_DEFAULT_CHAIN;
+        }
+
+        return this.chainId;
+    }
+
+    @computed get viewerPdbId(): string | undefined {
+        if (this.structureSource === StructureSource.ALPHAFOLD) {
+            return this.props.uniprotId;
+        }
+
+        return this.pdbId;
+    }
+
+    @computed get viewerResidues(): IResidueSpec[] | undefined {
+        if (this.structureSource === StructureSource.ALPHAFOLD) {
+            return this.alphafoldResidues;
+        }
+
+        return this.residues;
+    }
+
+    @computed get alphafoldResidues(): IResidueSpec[] {
+        const residues: IResidueSpec[] = [];
+
+        _.each(this.mutationsByPosition, (mutations, positionKey) => {
+            const position = parseInt(positionKey, 10);
+
+            if (Number.isNaN(position) || mutations.length === 0) {
+                return;
+            }
+
+            const highlighted: boolean =
+                (this.props.mutationDataStore &&
+                    (this.props.mutationDataStore.isPositionSelected(
+                        position
+                    ) ||
+                        this.props.mutationDataStore.isPositionHighlighted(
+                            position
+                        ))) ||
+                false;
+
+            residues.push({
+                positionRange: {
+                    start: { position },
+                    end: { position },
+                },
+                color: getColorForProteinImpactType(mutations, this.props),
+                highlighted,
+            });
+        });
+
+        return _.uniq(residues);
+    }
+
+    @computed get pyMolStructureId(): string | undefined {
+        if (this.structureSource === StructureSource.ALPHAFOLD) {
+            return this.props.uniprotId;
+        }
+
+        return this.pdbId;
     }
 
     @computed get pdbId() {
@@ -698,6 +949,13 @@ export default class StructureViewerPanel extends React.Component<
 
     @computed get residueWarning(): string {
         let warning = '';
+
+        if (this.structureSource === StructureSource.ALPHAFOLD) {
+            if (_.keys(this.mutationsByPosition).length === 0) {
+                warning = 'No mutations to display on this structure';
+            }
+            return warning;
+        }
 
         // None of the mutations (selected or not) can be mapped onto the current PDB chain.
         if (
@@ -907,19 +1165,22 @@ export default class StructureViewerPanel extends React.Component<
         const scriptGenerator = new PyMolScriptGenerator();
 
         const visualizerProps = {
-            displayBoundMolecules: this.displayBoundMolecules,
+            displayBoundMolecules:
+                this.structureSource === StructureSource.PDB &&
+                this.displayBoundMolecules,
             proteinScheme: this.proteinScheme,
-            proteinColor: this.proteinColor,
+            proteinColor: this.effectiveProteinColor,
             sideChain: this.sideChain,
             mutationColor: this.mutationColor,
         };
 
-        if (this.pdbId && this.chainId) {
+        if (this.pyMolStructureId && this.viewerChainId) {
             return scriptGenerator.generateScript(
-                this.pdbId,
-                this.chainId,
-                this.residues || [],
-                visualizerProps
+                this.pyMolStructureId,
+                this.viewerChainId,
+                this.viewerResidues || [],
+                visualizerProps,
+                this.structureSource
             );
         } else {
             return '';
@@ -936,5 +1197,20 @@ export default class StructureViewerPanel extends React.Component<
 
     @computed get colorByAtomTypeDisabled() {
         return this.proteinScheme !== ProteinScheme.SPACE_FILLING;
+    }
+
+    @computed get effectiveProteinColor(): ProteinColor {
+        if (
+            this.structureSource === StructureSource.ALPHAFOLD &&
+            this.displayPlddtColoring
+        ) {
+            return ProteinColor.PLDDT;
+        }
+
+        return this.proteinColor;
+    }
+
+    @computed get colorByPlddtEnabled() {
+        return this.displayPlddtColoring;
     }
 }

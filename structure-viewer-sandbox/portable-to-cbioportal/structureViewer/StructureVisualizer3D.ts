@@ -11,11 +11,15 @@ import {
 import {
     default as StructureVisualizer,
     ProteinScheme,
+    ProteinColor,
     MutationColor,
     SideChain,
+    StructureSource,
     IStructureVisualizerProps,
     IResidueSpec,
 } from './StructureVisualizer';
+import { fetchAlphaFoldModelText } from './AlphaFoldUtils';
+import { getAlphaFoldPlddtColorscheme } from './AlphaFoldPlddtUtils';
 import {
     IResidueHelper,
     IResidueSelector,
@@ -35,6 +39,7 @@ export type StyleSpec = {
     color?: string;
     colors?: string[];
     opacity?: number;
+    colorscheme?: any;
 };
 export type LineStyleSpec = StyleSpec;
 export type CrossStyleSpec = StyleSpec;
@@ -51,6 +56,7 @@ export type AtomStyleSpec = {
 };
 
 interface IStructureVisualizerState {
+    structureSource: StructureSource;
     pdbId: string;
     chainId: string;
     residues: IResidueSpec[];
@@ -134,12 +140,14 @@ export default class StructureVisualizer3D extends StructureVisualizer {
 
         // init state
         this.state = {
+            structureSource: StructureSource.PDB,
             pdbId: '',
             chainId: '',
             residues: [],
         };
 
         this._prevState = {
+            structureSource: StructureSource.PDB,
             pdbId: '',
             chainId: '',
             residues: [],
@@ -180,9 +188,10 @@ export default class StructureVisualizer3D extends StructureVisualizer {
     }
 
     public init(
-        pdbId: string,
+        structureId: string,
         chainId: string,
         residues: IResidueSpec[] = this.state.residues,
+        structureSource: StructureSource = StructureSource.PDB,
         viewer?: any
     ) {
         if (viewer) {
@@ -199,8 +208,70 @@ export default class StructureVisualizer3D extends StructureVisualizer {
                     StructureVisualizer.defaultProps.backgroundColor
             );
             this._3dMolViewer.setBackgroundColor(backgroundColor);
-            this.loadPdb(pdbId, chainId, residues);
+            this.loadStructure(
+                structureSource,
+                structureId,
+                chainId,
+                residues
+            );
         }
+    }
+
+    public loadStructure(
+        structureSource: StructureSource,
+        structureId: string,
+        chainId: string,
+        residues: IResidueSpec[] = this.state.residues,
+        props: IStructureVisualizerProps = this.props
+    ) {
+        if (structureSource === StructureSource.ALPHAFOLD) {
+            this.loadAlphaFold(structureId, chainId, residues, props);
+        } else {
+            this.loadPdb(structureId, chainId, residues, props);
+        }
+    }
+
+    public loadAlphaFold(
+        uniprotId: string,
+        chainId: string,
+        residues: IResidueSpec[] = this.state.residues,
+        props: IStructureVisualizerProps = this.props
+    ) {
+        const filesBaseUrl =
+            props.alphafoldFilesBaseUrl ||
+            StructureVisualizer.defaultProps.alphafoldFilesBaseUrl;
+
+        this._loadingPdb = true;
+
+        this.setState({
+            structureSource: StructureSource.ALPHAFOLD,
+            pdbId: uniprotId,
+            chainId,
+            residues,
+        } as IStructureVisualizerState);
+
+        if (!this._3dMolViewer) {
+            this._loadingPdb = false;
+            return;
+        }
+
+        this._3dMolViewer.clear();
+
+        fetchAlphaFoldModelText(uniprotId, { baseUrl: filesBaseUrl, format: 'cif' })
+            .then(modelData => {
+                if (!this._3dMolViewer) {
+                    return;
+                }
+
+                this._3dMolViewer.addModel(modelData, 'cif');
+                this._3dMolViewer.zoomTo();
+                this._loadingPdb = false;
+                this.onStateChange(this.state);
+            })
+            .catch(error => {
+                console.error(error);
+                this._loadingPdb = false;
+            });
     }
 
     public loadPdb(
@@ -221,6 +292,7 @@ export default class StructureVisualizer3D extends StructureVisualizer {
 
         // update state
         this.setState({
+            structureSource: StructureSource.PDB,
             pdbId,
             chainId,
             residues,
@@ -354,6 +426,20 @@ export default class StructureVisualizer3D extends StructureVisualizer {
 
     protected selectBetaSheet(chainId: string) {
         return { chain: chainId, ss: 's' };
+    }
+
+    protected applyPlddtColor(chainId: string, baseStyle: AtomStyleSpec) {
+        const selector = this.selectChain(chainId);
+        const style = _.cloneDeep(baseStyle);
+        const colorscheme = getAlphaFoldPlddtColorscheme();
+
+        _.each(style, (spec: StyleSpec) => {
+            delete spec.color;
+            delete spec.colors;
+            spec.colorscheme = colorscheme;
+        });
+
+        this.applyStyleForSelector(selector, style);
     }
 
     protected hideBoundMolecules() {
@@ -519,6 +605,7 @@ export default class StructureVisualizer3D extends StructureVisualizer {
      */
     @computed get needToUpdateResiduesOnly(): boolean {
         return (
+            this._prevState.structureSource === this.state.structureSource &&
             this._prevState.pdbId === this.state.pdbId &&
             this._prevState.chainId === this.state.chainId &&
             this.visualPropsUnchanged &&
@@ -561,6 +648,23 @@ export default class StructureVisualizer3D extends StructureVisualizer {
         chainId: string,
         props: IStructureVisualizerProps = this.props
     ) {
+        if (
+            props.structureSource === StructureSource.ALPHAFOLD &&
+            props.proteinColor === ProteinColor.PLDDT
+        ) {
+            if (!this.needToUpdateResiduesOnly) {
+                const style = this.updateScheme(props);
+                const selector = this.selectAll();
+                this.setTransparency(0, selector, style);
+                this.applyPlddtColor(chainId, style);
+            }
+
+            if (this._3dMolViewer) {
+                this._3dMolViewer.render();
+            }
+            return;
+        }
+
         super.updateVisualStyle(residues, chainId, props);
     }
 

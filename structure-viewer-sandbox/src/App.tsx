@@ -53,6 +53,16 @@ const SandboxApp = observer(function SandboxApp() {
                         }
                         residueMappingCache={store.residueMappingCache}
                         uniprotId={store.uniprotId}
+                        alphafoldFilesBaseUrl={
+                            import.meta.env.DEV
+                                ? '/alphafold-files'
+                                : 'https://alphafold.ebi.ac.uk/files'
+                        }
+                        alphafoldApiBaseUrl={
+                            import.meta.env.DEV
+                                ? '/alphafold-api'
+                                : 'https://alphafold.ebi.ac.uk'
+                        }
                         onClose={() => setPanelOpen(false)}
                         {...DEFAULT_PROTEIN_IMPACT_TYPE_COLORS}
                     />
@@ -63,7 +73,8 @@ const SandboxApp = observer(function SandboxApp() {
                         className="btn btn-default btn-sm"
                         disabled={
                             store.status !== 'complete' ||
-                            store.pdbChainDataStore.allData.length === 0
+                            (store.pdbChainDataStore.allData.length === 0 &&
+                                !store.uniprotId)
                         }
                         onClick={() => setPanelOpen(open => !open)}
                         data-test="view3DStructure"

@@ -74,6 +74,18 @@ export default defineConfig({
                 secure: true,
                 rewrite: path => path.replace(/^\/cbioportal-api/, ''),
             },
+            '/alphafold-files': {
+                target: 'https://alphafold.ebi.ac.uk',
+                changeOrigin: true,
+                secure: true,
+                rewrite: path => path.replace(/^\/alphafold-files/, '/files'),
+            },
+            '/alphafold-api': {
+                target: 'https://alphafold.ebi.ac.uk',
+                changeOrigin: true,
+                secure: true,
+                rewrite: path => path.replace(/^\/alphafold-api/, ''),
+            },
         },
     },
 });
