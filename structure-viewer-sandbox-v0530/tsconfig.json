@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "useDefineForClassFields": false,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react",
+    "experimentalDecorators": true,
+    "strict": false,
+    "baseUrl": ".",
+    "paths": {
+      "shared/components/structureViewer/*": [
+        "portable-to-cbioportal/structureViewer/*"
+      ],
+      "shared/*": ["src/shared/*"],
+      "config/*": ["src/config/*"],
+      "cbioportal-frontend-commons": ["src/commons/index.ts"],
+      "genome-nexus-ts-api-client": ["src/types/genome-nexus-api.ts"],
+      "cbioportal-ts-api-client": ["src/types/cbioportal-api.ts"],
+      "react-mutation-mapper": ["src/lib/proteinImpact.ts"]
+    }
+  },
+  "include": ["src"]
+}
