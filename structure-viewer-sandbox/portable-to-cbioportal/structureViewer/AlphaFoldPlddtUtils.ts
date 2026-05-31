@@ -1,3 +1,6 @@
+/** Residues below this pLDDT are treated as low-confidence (AlphaFold DB convention). */
+export const ALPHAFOLD_PLDDT_LOW_THRESHOLD = 50;
+
 /** AlphaFold DB standard pLDDT color bands (stored in mmCIF B-factor). */
 export const ALPHAFOLD_PLDDT_LEGEND = [
     { label: 'Very high (>90)', color: '#0053D6', min: 90, max: 100 },
@@ -21,4 +24,19 @@ export function getAlphaFoldPlddtColorscheme(): {
         max: 100,
         colors: ['0xFF7D45', '0xFFDB13', '0x65CBF3', '0x0053D6'],
     };
+}
+
+export function isLowPlddt(plddt: number): boolean {
+    return plddt < ALPHAFOLD_PLDDT_LOW_THRESHOLD;
+}
+
+export function getLowPlddtPositions(
+    plddtByResidue: { [position: number]: number },
+    positions: number[]
+): number[] {
+    return positions.filter(position => {
+        const score = plddtByResidue[position];
+
+        return score != null && isLowPlddt(score);
+    });
 }

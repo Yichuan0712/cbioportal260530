@@ -71,6 +71,7 @@ export default class PyMolScriptGenerator extends StructureVisualizer {
                     StructureVisualizer.defaultProps.alphafoldFilesBaseUrl,
                 format: 'cif',
                 version: ALPHAFOLD_MODEL_VERSION,
+                isoform: props.alphafoldIsoform,
             });
             this._script.push(`load ${url};`);
         } else {
@@ -208,7 +209,10 @@ export default class PyMolScriptGenerator extends StructureVisualizer {
                 );
             }
             // use the provided color
-            else if (props.mutationColor === MutationColor.MUTATION_TYPE) {
+            else if (
+                props.mutationColor === MutationColor.MUTATION_TYPE ||
+                props.mutationColor === MutationColor.DENSITY
+            ) {
                 this.selectResidues(resCodes, chainId);
                 this.setColor(color);
             }

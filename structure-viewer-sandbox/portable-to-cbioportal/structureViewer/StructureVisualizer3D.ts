@@ -17,9 +17,16 @@ import {
     StructureSource,
     IStructureVisualizerProps,
     IResidueSpec,
+    StructureLoadStatus,
 } from './StructureVisualizer';
-import { fetchAlphaFoldModelText } from './AlphaFoldUtils';
+import {
+    fetchAlphaFoldModelText,
+} from './AlphaFoldUtils';
 import { getAlphaFoldPlddtColorscheme } from './AlphaFoldPlddtUtils';
+import {
+    verifyPdbStructureAvailable,
+    viewerHasStructureAtoms,
+} from './PdbStructureUtils';
 import {
     IResidueHelper,
     IResidueSelector,
@@ -74,6 +81,17 @@ export default class StructureVisualizer3D extends StructureVisualizer {
     @observable private _prevState: IStructureVisualizerState;
 
     private _loadingPdb: boolean = false;
+    private _loadRequestId: number = 0;
+
+    private notifyLoadStatus(
+        status: StructureLoadStatus,
+        message?: string,
+        props: IStructureVisualizerProps = this.props
+    ) {
+        if (props.onStructureLoadStatusChange) {
+            props.onStructureLoadStatusChange(status, message);
+        }
+    }
 
     public static get PROTEIN_SCHEME_PRESETS(): {
         [scheme: number]: AtomStyleSpec;
@@ -240,8 +258,11 @@ export default class StructureVisualizer3D extends StructureVisualizer {
         const filesBaseUrl =
             props.alphafoldFilesBaseUrl ||
             StructureVisualizer.defaultProps.alphafoldFilesBaseUrl;
+        const isoform = props.alphafoldIsoform ?? 1;
+        const requestId = ++this._loadRequestId;
 
         this._loadingPdb = true;
+        this.notifyLoadStatus('loading', undefined, props);
 
         this.setState({
             structureSource: StructureSource.ALPHAFOLD,
@@ -252,25 +273,54 @@ export default class StructureVisualizer3D extends StructureVisualizer {
 
         if (!this._3dMolViewer) {
             this._loadingPdb = false;
+            this.notifyLoadStatus(
+                'error',
+                '3D viewer failed to initialize',
+                props
+            );
+            return;
+        }
+
+        if (!uniprotId) {
+            this._loadingPdb = false;
+            this.notifyLoadStatus(
+                'error',
+                'No UniProt accession available for AlphaFold',
+                props
+            );
             return;
         }
 
         this._3dMolViewer.clear();
 
-        fetchAlphaFoldModelText(uniprotId, { baseUrl: filesBaseUrl, format: 'cif' })
+        fetchAlphaFoldModelText(uniprotId, {
+            baseUrl: filesBaseUrl,
+            format: 'cif',
+            isoform,
+        })
             .then(modelData => {
-                if (!this._3dMolViewer) {
+                if (!this._3dMolViewer || requestId !== this._loadRequestId) {
                     return;
                 }
 
                 this._3dMolViewer.addModel(modelData, 'cif');
                 this._3dMolViewer.zoomTo();
                 this._loadingPdb = false;
+                this.notifyLoadStatus('ready', undefined, props);
                 this.onStateChange(this.state);
             })
             .catch(error => {
+                if (requestId !== this._loadRequestId) {
+                    return;
+                }
+
                 console.error(error);
                 this._loadingPdb = false;
+                const message =
+                    error instanceof Error
+                        ? error.message
+                        : 'AlphaFold model could not be loaded';
+                this.notifyLoadStatus('error', message, props);
             });
     }
 
@@ -286,9 +336,11 @@ export default class StructureVisualizer3D extends StructureVisualizer {
             // multiMode: true,
             // frames: true
         };
+        const requestId = ++this._loadRequestId;
 
         // update load state (mark as loading)
         this._loadingPdb = true;
+        this.notifyLoadStatus('loading', undefined, props);
 
         // update state
         this.setState({
@@ -298,28 +350,75 @@ export default class StructureVisualizer3D extends StructureVisualizer {
             residues,
         } as IStructureVisualizerState);
 
-        if (this._3dMolViewer) {
-            // clear previous content
-            this._3dMolViewer.clear();
-
-            // TODO handle download error
-            // init download
-            this._3dMol.download(
-                `pdb:${pdbId.toUpperCase()}`,
-                this._3dMolViewer,
-                options,
-                () => {
-                    // update load state (mark as finished)
-                    this._loadingPdb = false;
-                    // use the global state instead of the local variables,
-                    // since the state might be updated before the pdb download ends
-                    this.onStateChange(this.state);
-                }
-            );
-        } else {
-            // update load state (mark as finished)
+        if (!this._3dMolViewer) {
             this._loadingPdb = false;
+            this.notifyLoadStatus(
+                'error',
+                '3D viewer failed to initialize',
+                props
+            );
+            return;
         }
+
+        if (!pdbId) {
+            this._loadingPdb = false;
+            this.notifyLoadStatus(
+                'error',
+                'No PDB structure selected',
+                props
+            );
+            return;
+        }
+
+        // clear previous content
+        this._3dMolViewer.clear();
+
+        verifyPdbStructureAvailable(pdbId, props.pdbUri)
+            .then(() => {
+                if (!this._3dMolViewer || requestId !== this._loadRequestId) {
+                    return;
+                }
+
+                this._3dMol.download(
+                    `pdb:${pdbId.toUpperCase()}`,
+                    this._3dMolViewer,
+                    options,
+                    () => {
+                        if (requestId !== this._loadRequestId) {
+                            return;
+                        }
+
+                        this._loadingPdb = false;
+
+                        if (!viewerHasStructureAtoms(this._3dMolViewer)) {
+                            this.notifyLoadStatus(
+                                'error',
+                                `PDB structure ${pdbId.toUpperCase()} could not be loaded.`,
+                                props
+                            );
+                            return;
+                        }
+
+                        this.notifyLoadStatus('ready', undefined, props);
+                        // use the global state instead of the local variables,
+                        // since the state might be updated before the pdb download ends
+                        this.onStateChange(this.state);
+                    }
+                );
+            })
+            .catch(error => {
+                if (requestId !== this._loadRequestId) {
+                    return;
+                }
+
+                console.error(error);
+                this._loadingPdb = false;
+                const message =
+                    error instanceof Error
+                        ? error.message
+                        : 'PDB structure could not be loaded';
+                this.notifyLoadStatus('error', message, props);
+            });
     }
 
     public updateViewer(
@@ -522,7 +621,10 @@ export default class StructureVisualizer3D extends StructureVisualizer {
                     this.props.highlightColor || defaultProps.highlightColor;
             }
             // use the provided color
-            else if (props.mutationColor === MutationColor.MUTATION_TYPE) {
+            else if (
+                props.mutationColor === MutationColor.MUTATION_TYPE ||
+                props.mutationColor === MutationColor.DENSITY
+            ) {
                 color = residue.color;
             }
             // use a uniform color

@@ -5,6 +5,7 @@ import {
     IStructureVisualizerProps,
     IResidueSpec,
     StructureSource,
+    StructureLoadStatus,
 } from './StructureVisualizer';
 import StructureVisualizer3D from './StructureVisualizer3D';
 
@@ -16,6 +17,10 @@ export interface IStructureViewerProps extends IStructureVisualizerProps {
     bounds: { width: number | string; height: number | string };
     residues?: IResidueSpec[];
     containerRef?: (div: HTMLDivElement) => void;
+    onStructureLoadStatusChange?: (
+        status: StructureLoadStatus,
+        message?: string
+    ) => void;
 }
 
 @observer
@@ -71,7 +76,9 @@ export default class StructureViewer extends React.Component<
             const needsReload =
                 structureId !== this._structureId ||
                 this.props.structureSource !== this._structureSource ||
-                this.props.chainId !== prevProps.chainId;
+                this.props.chainId !== prevProps.chainId ||
+                (this.props.structureSource === StructureSource.ALPHAFOLD &&
+                    this.props.alphafoldIsoform !== prevProps.alphafoldIsoform);
 
             if (needsReload) {
                 this._structureId = structureId;

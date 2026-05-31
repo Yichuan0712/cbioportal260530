@@ -16,6 +16,7 @@ import {
 export interface IAlphaFoldChainInfoProps {
     uniprotId: string;
     chainId: string;
+    isoform?: number;
     truncateText?: boolean;
     summaryFormat?: boolean;
     alphafoldApiBaseUrl?: string;
@@ -45,6 +46,7 @@ export default class AlphaFoldChainInfo extends React.Component<
     public componentDidUpdate(prevProps: IAlphaFoldChainInfoProps) {
         if (
             prevProps.uniprotId !== this.props.uniprotId ||
+            prevProps.isoform !== this.props.isoform ||
             prevProps.alphafoldApiBaseUrl !== this.props.alphafoldApiBaseUrl
         ) {
             this.loadMetadata();
@@ -56,12 +58,16 @@ export default class AlphaFoldChainInfo extends React.Component<
         this.status = 'loading';
         this.modelInfo = null;
         this.moleculeInfo = null;
-        this.entryId = getAlphaFoldModelId(this.props.uniprotId);
+        this.entryId = getAlphaFoldModelId(
+            this.props.uniprotId,
+            this.props.isoform
+        );
 
         try {
             const metadata = await fetchAlphaFoldPredictionMetadataCached(
                 this.props.uniprotId,
-                this.props.alphafoldApiBaseUrl
+                this.props.alphafoldApiBaseUrl,
+                this.props.isoform
             );
 
             if (!metadata) {
@@ -103,7 +109,9 @@ export default class AlphaFoldChainInfo extends React.Component<
     }
 
     public render() {
-        const displayId = this.entryId || getAlphaFoldModelId(this.props.uniprotId);
+        const displayId =
+            this.entryId ||
+            getAlphaFoldModelId(this.props.uniprotId, this.props.isoform);
 
         return (
             <div className={this.props.truncateText ? 'col col-sm-12' : ''}>

@@ -3,7 +3,7 @@ import _ from 'lodash';
 import { FormControl, Checkbox, Button, ButtonGroup } from 'react-bootstrap';
 import { If, Else, Then } from 'react-if';
 import { ThreeBounce } from 'better-react-spinkit';
-import { observable, computed, makeObservable } from 'mobx';
+import { observable, computed, makeObservable, action } from 'mobx';
 import { observer } from 'mobx-react';
 import Draggable from 'react-draggable';
 import fileDownload from 'react-file-download';
@@ -35,11 +35,29 @@ import {
     SideChain,
     MutationColor,
     StructureSource,
+    StructureLoadStatus,
     IResidueSpec,
 } from './StructureVisualizer';
 import PyMolScriptGenerator from './PyMolScriptGenerator';
-import { ALPHAFOLD_DEFAULT_CHAIN, getAlphaFoldModelId } from './AlphaFoldUtils';
-import { ALPHAFOLD_PLDDT_LEGEND } from './AlphaFoldPlddtUtils';
+import {
+    ALPHAFOLD_DEFAULT_CHAIN,
+    ALPHAFOLD_DEFAULT_ISOFORM,
+    fetchAlphaFoldPredictionsCached,
+    fetchAlphaFoldPredictionMetadataCached,
+    fetchAlphaFoldPlddtByResidue,
+    getAlphaFoldModelId,
+} from './AlphaFoldUtils';
+import {
+    ALPHAFOLD_PLDDT_LEGEND,
+    ALPHAFOLD_PLDDT_LOW_THRESHOLD,
+    getLowPlddtPositions,
+} from './AlphaFoldPlddtUtils';
+import {
+    getColorForMutationDensity,
+    getMaxMutationCount,
+    MUTATION_DENSITY_COLOR_HIGH,
+    MUTATION_DENSITY_COLOR_LOW,
+} from './MutationDensityUtils';
 
 import styles from './structureViewer.module.scss';
 import { getServerConfig } from 'config/config';
@@ -74,6 +92,13 @@ export default class StructureViewerPanel extends React.Component<
         StructureSource.PDB;
     @observable protected displayBoundMolecules: boolean = true;
     @observable protected displayPlddtColoring: boolean = false;
+    @observable protected structureLoadStatus: StructureLoadStatus = 'idle';
+    @observable protected structureLoadError: string | null = null;
+    @observable protected alphafoldIsoform: number = ALPHAFOLD_DEFAULT_ISOFORM;
+    @observable protected availableIsoforms: number[] = [
+        ALPHAFOLD_DEFAULT_ISOFORM,
+    ];
+    @observable protected plddtByResidue: { [position: number]: number } = {};
 
     protected _3dMolDiv: HTMLDivElement | undefined;
 
@@ -81,6 +106,9 @@ export default class StructureViewerPanel extends React.Component<
         super(props);
 
         makeObservable(this);
+
+        this.structureSource =
+            StructureViewerPanel.resolveInitialStructureSource(props);
 
         this.containerRefHandler = this.containerRefHandler.bind(this);
         this.toggleCollapse = this.toggleCollapse.bind(this);
@@ -103,6 +131,32 @@ export default class StructureViewerPanel extends React.Component<
             this
         );
         this.handlePlddtColorChange = this.handlePlddtColorChange.bind(this);
+        this.handleIsoformChange = this.handleIsoformChange.bind(this);
+        this.handleStructureLoadStatusChange = this.handleStructureLoadStatusChange.bind(
+            this
+        );
+    }
+
+    public componentDidMount() {
+        this.loadAlphaFoldPanelData();
+    }
+
+    public componentDidUpdate(prevProps: IStructureViewerPanelProps) {
+        if (prevProps.uniprotId !== this.props.uniprotId) {
+            this.loadAlphaFoldPanelData();
+        }
+    }
+
+    private static resolveInitialStructureSource(
+        props: IStructureViewerPanelProps
+    ): StructureSource {
+        const hasPdbChains = props.pdbChainDataStore.allData.length > 0;
+
+        if (!hasPdbChains && props.uniprotId) {
+            return StructureSource.ALPHAFOLD;
+        }
+
+        return StructureSource.PDB;
     }
 
     public selectionTitle(
@@ -213,6 +267,19 @@ export default class StructureViewerPanel extends React.Component<
                         <span> (IF del, IF ins)</span>
                     </li>
                 </ul>
+                <b>Mutation density:</b> Colors mapped residues by how many
+                mutations fall on that position —{' '}
+                <span
+                    className={styles['mutation-density-swatch']}
+                    style={{ backgroundColor: MUTATION_DENSITY_COLOR_LOW }}
+                />
+                {' low '}
+                <span
+                    className={styles['mutation-density-swatch']}
+                    style={{ backgroundColor: MUTATION_DENSITY_COLOR_HIGH }}
+                />
+                {' high density.'}
+                <br />
                 <b>None:</b> Disables coloring of the mutated residues except
                 for manually selected (highlighted) residues. <br />
                 <br />
@@ -277,8 +344,71 @@ export default class StructureViewerPanel extends React.Component<
                 <b>PDB:</b> Experimental structure from the Protein Data Bank
                 (via G2S alignment). <br />
                 <b>AlphaFold:</b> Predicted full-length structure from the
-                AlphaFold Database (mutations mapped by protein position until
-                G2S AlphaFold alignment is available).
+                AlphaFold Database. Mutations are mapped by UniProt protein
+                position until G2S AlphaFold alignment is available.
+            </div>
+        );
+    }
+
+    public alphafoldMappingNote() {
+        if (this.structureSource !== StructureSource.ALPHAFOLD) {
+            return null;
+        }
+
+        return (
+            <div className="row">
+                <div
+                    className={classnames(
+                        'col col-sm-12',
+                        styles['alphafold-mapping-note']
+                    )}
+                >
+                    Mutations are placed by UniProt protein position
+                    (temporary until G2S AlphaFold alignment is available).
+                </div>
+            </div>
+        );
+    }
+
+    public isoformMenu() {
+        if (
+            this.structureSource !== StructureSource.ALPHAFOLD ||
+            this.availableIsoforms.length <= 1
+        ) {
+            return null;
+        }
+
+        return (
+            <div className="row">
+                <div className="col col-sm-12">
+                    <div className="row">
+                        {this.selectionTitle(
+                            'Isoform',
+                            <div style={{ maxWidth: 400 }}>
+                                AlphaFold model fragment (F1, F2, …) for
+                                long or multi-domain proteins.
+                            </div>
+                        )}
+                    </div>
+                    <div className="row">
+                        <FormControl
+                            className={styles['default-option-select']}
+                            componentClass="select"
+                            value={`${this.alphafoldIsoform}`}
+                            onChange={
+                                this.handleIsoformChange as React.FormEventHandler<
+                                    any
+                                >
+                            }
+                        >
+                            {this.availableIsoforms.map(isoform => (
+                                <option key={isoform} value={isoform}>
+                                    F{isoform}
+                                </option>
+                            ))}
+                        </FormControl>
+                    </div>
+                </div>
             </div>
         );
     }
@@ -319,6 +449,7 @@ export default class StructureViewerPanel extends React.Component<
                         </div>
                     </div>
                 </div>
+                {this.isoformMenu()}
                 <div className="row">
                     <div className="col col-sm-10 col-sm-offset-1">
                         <hr />
@@ -518,6 +649,9 @@ export default class StructureViewerPanel extends React.Component<
                                 <option value={MutationColor.MUTATION_TYPE}>
                                     mutation type
                                 </option>
+                                <option value={MutationColor.DENSITY}>
+                                    mutation density
+                                </option>
                                 <option value={MutationColor.NONE}>none</option>
                             </FormControl>
                         </div>
@@ -566,6 +700,18 @@ export default class StructureViewerPanel extends React.Component<
             <div className={classnames('row', styles['header'])}>
                 <div className="col col-sm-10">
                     <span>3D Structure</span>
+                    <span
+                        className={classnames(styles['structure-source-badge'], {
+                            [styles['structure-source-badge--pdb']]:
+                                this.structureSource === StructureSource.PDB,
+                            [styles['structure-source-badge--alphafold']]:
+                                this.structureSource === StructureSource.ALPHAFOLD,
+                        })}
+                    >
+                        {this.structureSource === StructureSource.PDB
+                            ? 'Experimental'
+                            : 'Predicted'}
+                    </span>
                 </div>
                 <div className="col col-sm-2">
                     <span className="pull-right" style={{ whiteSpace: 'nowrap' }}>
@@ -598,6 +744,7 @@ export default class StructureViewerPanel extends React.Component<
             return (
                 <span>
                     <div className="row">{this.structureInfoContent()}</div>
+                    {this.alphafoldMappingNote()}
                     <div
                         className={classnames(
                             'row',
@@ -623,24 +770,39 @@ export default class StructureViewerPanel extends React.Component<
                         className="row"
                         style={{ paddingTop: 5, paddingBottom: 5 }}
                     >
-                        <StructureViewer
-                            structureSource={this.structureSource}
-                            displayBoundMolecules={
-                                this.structureSource === StructureSource.PDB &&
-                                this.displayBoundMolecules
-                            }
-                            proteinScheme={this.proteinScheme}
-                            proteinColor={this.effectiveProteinColor}
-                            sideChain={this.sideChain}
-                            mutationColor={this.mutationColor}
-                            pdbId={this.viewerPdbId || ''}
-                            uniprotId={this.props.uniprotId}
-                            chainId={this.viewerChainId || ''}
-                            residues={this.viewerResidues}
-                            alphafoldFilesBaseUrl={this.props.alphafoldFilesBaseUrl}
-                            bounds={this.structureViewerBounds}
-                            containerRef={this.containerRefHandler}
-                        />
+                        <div
+                            className={classnames(
+                                'col col-sm-12',
+                                styles['structure-viewer-overlay']
+                            )}
+                        >
+                            <StructureViewer
+                                structureSource={this.structureSource}
+                                displayBoundMolecules={
+                                    this.structureSource ===
+                                        StructureSource.PDB &&
+                                    this.displayBoundMolecules
+                                }
+                                proteinScheme={this.proteinScheme}
+                                proteinColor={this.effectiveProteinColor}
+                                sideChain={this.sideChain}
+                                mutationColor={this.mutationColor}
+                                pdbId={this.viewerPdbId || ''}
+                                uniprotId={this.props.uniprotId}
+                                chainId={this.viewerChainId || ''}
+                                residues={this.viewerResidues}
+                                alphafoldIsoform={this.alphafoldIsoform}
+                                alphafoldFilesBaseUrl={
+                                    this.props.alphafoldFilesBaseUrl
+                                }
+                                onStructureLoadStatusChange={
+                                    this.handleStructureLoadStatusChange
+                                }
+                                bounds={this.structureViewerBounds}
+                                containerRef={this.containerRefHandler}
+                            />
+                            {this.structureViewerStatusOverlay()}
+                        </div>
                     </div>
                 </span>
             );
@@ -648,16 +810,66 @@ export default class StructureViewerPanel extends React.Component<
             // show loader
             return (
                 <div style={{ textAlign: 'center' }}>
-                    <ThreeBounce
-                        size={25}
-                        style={{
-                            display: 'inline-block',
-                            padding: 25,
-                        }}
-                    />
+                    {this.structureSource === StructureSource.ALPHAFOLD &&
+                    !this.props.uniprotId ? (
+                        <span className="text-danger">
+                            No UniProt accession available for AlphaFold.
+                        </span>
+                    ) : (
+                        <ThreeBounce
+                            size={25}
+                            style={{
+                                display: 'inline-block',
+                                padding: 25,
+                            }}
+                        />
+                    )}
                 </div>
             );
         }
+    }
+
+    public structureViewerStatusOverlay() {
+        if (
+            this.structureLoadStatus !== 'loading' &&
+            this.structureLoadStatus !== 'error'
+        ) {
+            return null;
+        }
+
+        const isAlphaFold =
+            this.structureSource === StructureSource.ALPHAFOLD;
+
+        if (this.structureLoadStatus === 'loading') {
+            return (
+                <div className={styles['structure-viewer-status']}>
+                    <ThreeBounce
+                        size={20}
+                        style={{ display: 'inline-block' }}
+                    />
+                    <span style={{ marginLeft: 8 }}>
+                        {isAlphaFold
+                            ? 'Loading AlphaFold model…'
+                            : 'Loading PDB structure…'}
+                    </span>
+                </div>
+            );
+        }
+
+        const defaultMessage = isAlphaFold
+            ? 'AlphaFold model could not be loaded.'
+            : 'PDB structure could not be loaded.';
+
+        return (
+            <div
+                className={classnames(
+                    styles['structure-viewer-status'],
+                    styles['structure-viewer-status--error']
+                )}
+            >
+                {this.structureLoadError || defaultMessage}
+            </div>
+        );
     }
 
     public render() {
@@ -764,9 +976,90 @@ export default class StructureViewerPanel extends React.Component<
             (evt.target as HTMLSelectElement).value,
             10
         );
+        this.structureLoadStatus = 'idle';
+        this.structureLoadError = null;
 
         if (this.structureSource === StructureSource.PDB) {
             this.displayPlddtColoring = false;
+        } else {
+            this.loadPlddtScores();
+        }
+    }
+
+    private handleIsoformChange(evt: React.FormEvent<HTMLSelectElement>) {
+        this.alphafoldIsoform = parseInt(
+            (evt.target as HTMLSelectElement).value,
+            10
+        );
+        this.structureLoadStatus = 'idle';
+        this.structureLoadError = null;
+        this.loadPlddtScores();
+    }
+
+    private handleStructureLoadStatusChange(
+        status: StructureLoadStatus,
+        message?: string
+    ) {
+        this.structureLoadStatus = status;
+        this.structureLoadError = message || null;
+    }
+
+    @action
+    private async loadAlphaFoldPanelData() {
+        if (!this.props.uniprotId) {
+            return;
+        }
+
+        const predictions = await fetchAlphaFoldPredictionsCached(
+            this.props.uniprotId,
+            this.props.alphafoldApiBaseUrl
+        );
+
+        if (predictions.length === 0) {
+            this.availableIsoforms = [ALPHAFOLD_DEFAULT_ISOFORM];
+            return;
+        }
+
+        this.availableIsoforms = _.uniq(
+            predictions.map(prediction => prediction.isoform)
+        ).sort((a, b) => a - b);
+
+        if (!this.availableIsoforms.includes(this.alphafoldIsoform)) {
+            this.alphafoldIsoform = this.availableIsoforms[0];
+        }
+
+        if (this.structureSource === StructureSource.ALPHAFOLD) {
+            await this.loadPlddtScores();
+        }
+    }
+
+    @action
+    private async loadPlddtScores() {
+        if (
+            !this.props.uniprotId ||
+            this.structureSource !== StructureSource.ALPHAFOLD
+        ) {
+            this.plddtByResidue = {};
+            return;
+        }
+
+        try {
+            const metadata = await fetchAlphaFoldPredictionMetadataCached(
+                this.props.uniprotId,
+                this.props.alphafoldApiBaseUrl,
+                this.alphafoldIsoform
+            );
+
+            if (!metadata?.plddtDocUrl) {
+                this.plddtByResidue = {};
+                return;
+            }
+
+            this.plddtByResidue = await fetchAlphaFoldPlddtByResidue(
+                metadata.plddtDocUrl
+            );
+        } catch (error) {
+            this.plddtByResidue = {};
         }
     }
 
@@ -780,6 +1073,7 @@ export default class StructureViewerPanel extends React.Component<
                 <AlphaFoldChainInfo
                     uniprotId={this.props.uniprotId}
                     chainId={this.viewerChainId}
+                    isoform={this.alphafoldIsoform}
                     truncateText={true}
                     alphafoldApiBaseUrl={this.props.alphafoldApiBaseUrl}
                 />
@@ -804,9 +1098,10 @@ export default class StructureViewerPanel extends React.Component<
         if (this.viewerChainId && this.pyMolStructureId) {
             const filename =
                 this.structureSource === StructureSource.ALPHAFOLD
-                    ? `${getAlphaFoldModelId(this.props.uniprotId || '')}_${
-                          this.viewerChainId
-                      }.pml`
+                    ? `${getAlphaFoldModelId(
+                          this.props.uniprotId || '',
+                          this.alphafoldIsoform
+                      )}_${this.viewerChainId}.pml`
                     : `${this.pdbId}_${this.viewerChainId}.pml`;
             fileDownload(this.pyMolScript, filename);
         }
@@ -848,6 +1143,21 @@ export default class StructureViewerPanel extends React.Component<
             this.chainId &&
             this.residues !== undefined
         );
+    }
+
+    @computed get maxMutationCountPerPosition(): number {
+        return getMaxMutationCount(this.mutationsByPosition);
+    }
+
+    private getMutationResidueColor(mutations: Mutation[]): string {
+        if (this.mutationColor === MutationColor.DENSITY) {
+            return getColorForMutationDensity(
+                mutations.length,
+                this.maxMutationCountPerPosition
+            );
+        }
+
+        return getColorForProteinImpactType(mutations, this.props);
     }
 
     @computed get viewerChainId(): string | undefined {
@@ -899,7 +1209,7 @@ export default class StructureViewerPanel extends React.Component<
                     start: { position },
                     end: { position },
                 },
-                color: getColorForProteinImpactType(mutations, this.props),
+                color: this.getMutationResidueColor(mutations),
                 highlighted,
             });
         });
@@ -931,6 +1241,29 @@ export default class StructureViewerPanel extends React.Component<
         }
     }
 
+    @computed get alphafoldPositionsOfInterest(): number[] {
+        const positions: number[] = [];
+
+        _.each(this.mutationsByPosition, (_mutations, positionKey) => {
+            const position = parseInt(positionKey, 10);
+
+            if (
+                Number.isNaN(position) ||
+                !this.props.mutationDataStore ||
+                (!this.props.mutationDataStore.isPositionSelected(position) &&
+                    !this.props.mutationDataStore.isPositionHighlighted(
+                        position
+                    ))
+            ) {
+                return;
+            }
+
+            positions.push(position);
+        });
+
+        return positions;
+    }
+
     @computed get pdbChain() {
         let data = this.props.pdbChainDataStore.sortedFilteredSelectedData;
 
@@ -951,10 +1284,30 @@ export default class StructureViewerPanel extends React.Component<
         let warning = '';
 
         if (this.structureSource === StructureSource.ALPHAFOLD) {
+            const warnings: string[] = [];
+
             if (_.keys(this.mutationsByPosition).length === 0) {
-                warning = 'No mutations to display on this structure';
+                warnings.push('No mutations to display on this structure');
             }
-            return warning;
+
+            const lowConfidencePositions = getLowPlddtPositions(
+                this.plddtByResidue,
+                this.alphafoldPositionsOfInterest
+            );
+
+            if (lowConfidencePositions.length === 1) {
+                warnings.push(
+                    `Selected mutation at position ${lowConfidencePositions[0]} falls in a low-confidence region (pLDDT < ${ALPHAFOLD_PLDDT_LOW_THRESHOLD})`
+                );
+            } else if (lowConfidencePositions.length > 1) {
+                warnings.push(
+                    `Selected mutations at positions ${lowConfidencePositions.join(
+                        ', '
+                    )} fall in low-confidence regions (pLDDT < ${ALPHAFOLD_PLDDT_LOW_THRESHOLD})`
+                );
+            }
+
+            return warnings.join(' ');
         }
 
         // None of the mutations (selected or not) can be mapped onto the current PDB chain.
@@ -1024,10 +1377,7 @@ export default class StructureViewerPanel extends React.Component<
                                 position: cacheData.data.pdbPosition,
                             },
                         },
-                        color: getColorForProteinImpactType(
-                            mutations,
-                            this.props
-                        ),
+                        color: this.getMutationResidueColor(mutations),
                         highlighted,
                     });
                 }
@@ -1172,6 +1522,8 @@ export default class StructureViewerPanel extends React.Component<
             proteinColor: this.effectiveProteinColor,
             sideChain: this.sideChain,
             mutationColor: this.mutationColor,
+            alphafoldIsoform: this.alphafoldIsoform,
+            alphafoldFilesBaseUrl: this.props.alphafoldFilesBaseUrl,
         };
 
         if (this.pyMolStructureId && this.viewerChainId) {

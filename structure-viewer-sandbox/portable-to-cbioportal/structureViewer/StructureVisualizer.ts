@@ -43,6 +43,7 @@ export enum SideChain {
 export enum MutationColor {
     UNIFORM,
     MUTATION_TYPE,
+    DENSITY,
     NONE,
 }
 
@@ -50,6 +51,8 @@ export enum StructureSource {
     PDB,
     ALPHAFOLD,
 }
+
+export type StructureLoadStatus = 'idle' | 'loading' | 'ready' | 'error';
 
 export interface IStructureVisualizerProps {
     proteinScheme: ProteinScheme;
@@ -85,6 +88,12 @@ export interface IStructureVisualizerProps {
     highlightColor?: string;
     /** When ALPHAFOLD, enables pLDDT coloring and other source-specific behavior. */
     structureSource?: StructureSource;
+    /** AlphaFold isoform index (F1, F2, …). Defaults to 1. */
+    alphafoldIsoform?: number;
+    onStructureLoadStatusChange?: (
+        status: StructureLoadStatus,
+        message?: string
+    ) => void;
 }
 
 abstract class StructureVisualizer {

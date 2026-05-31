@@ -105,11 +105,11 @@ export default class SandboxG2SStore {
 
                 const alignments = await fetchAlignmentsByEnsembl(transcriptId);
                 if (!alignments || alignments.length === 0) {
-                    throw new Error(
-                        `G2S returned no alignments for ${SANDBOX_HUGO_GENE} (${transcriptId}). Check G2S at ${import.meta.env.VITE_G2S_URL || 'g2s.genomenexus.org (via /g2s-api proxy)'}`
-                    );
+                    this.pdbChainDataStore = new PdbChainDataStore([]);
+                    this.pdbAlignmentIndex = {};
+                } else {
+                    this.applyAlignments(alignments);
                 }
-                this.applyAlignments(alignments);
             }
 
             if (!USE_MOCK_MUTATIONS) {

@@ -12,6 +12,18 @@ export function getAlphaFoldModelId(
     return `AF-${uniprotId.toUpperCase()}-F${isoform}`;
 }
 
+export function parseIsoformFromEntryId(entryId: string): number {
+    const match = entryId.match(/-F(\d+)$/i);
+
+    if (!match) {
+        return ALPHAFOLD_DEFAULT_ISOFORM;
+    }
+
+    const isoform = parseInt(match[1], 10);
+
+    return Number.isNaN(isoform) ? ALPHAFOLD_DEFAULT_ISOFORM : isoform;
+}
+
 export function getAlphaFoldModelUrl(
     uniprotId: string,
     options?: {
@@ -43,8 +55,11 @@ export type AlphaFoldPredictionMetadata = {
     gene?: string;
     organismScientificName: string;
     chainId: string;
+    isoform: number;
     latestVersion: number;
     globalMetricValue?: number;
+    plddtDocUrl?: string;
+    cifUrl?: string;
 };
 
 export function getAlphaFoldApiUrl(
@@ -61,23 +76,7 @@ export function getAlphaFoldApiUrl(
     )}`;
 }
 
-export async function fetchAlphaFoldPredictionMetadata(
-    uniprotId: string,
-    apiBaseUrl?: string
-): Promise<AlphaFoldPredictionMetadata | null> {
-    const response = await fetch(getAlphaFoldApiUrl(uniprotId, apiBaseUrl));
-
-    if (!response.ok) {
-        return null;
-    }
-
-    const data = await response.json();
-    const entry = Array.isArray(data) ? data[0] : null;
-
-    if (!entry) {
-        return null;
-    }
-
+function mapApiEntryToMetadata(entry: any): AlphaFoldPredictionMetadata {
     return {
         entryId: entry.entryId,
         uniprotAccession: entry.uniprotAccession,
@@ -85,9 +84,48 @@ export async function fetchAlphaFoldPredictionMetadata(
         gene: entry.gene,
         organismScientificName: entry.organismScientificName,
         chainId: entry.chainId || ALPHAFOLD_DEFAULT_CHAIN,
+        isoform: parseIsoformFromEntryId(entry.entryId),
         latestVersion: entry.latestVersion,
         globalMetricValue: entry.globalMetricValue,
+        plddtDocUrl: entry.plddtDocUrl,
+        cifUrl: entry.cifUrl,
     };
+}
+
+export async function fetchAlphaFoldPredictions(
+    uniprotId: string,
+    apiBaseUrl?: string
+): Promise<AlphaFoldPredictionMetadata[]> {
+    const response = await fetch(getAlphaFoldApiUrl(uniprotId, apiBaseUrl));
+
+    if (!response.ok) {
+        return [];
+    }
+
+    const data = await response.json();
+
+    if (!Array.isArray(data)) {
+        return [];
+    }
+
+    return data.map(mapApiEntryToMetadata);
+}
+
+export async function fetchAlphaFoldPredictionMetadata(
+    uniprotId: string,
+    apiBaseUrl?: string,
+    isoform: number = ALPHAFOLD_DEFAULT_ISOFORM
+): Promise<AlphaFoldPredictionMetadata | null> {
+    const predictions = await fetchAlphaFoldPredictions(uniprotId, apiBaseUrl);
+
+    if (predictions.length === 0) {
+        return null;
+    }
+
+    return (
+        predictions.find(prediction => prediction.isoform === isoform) ||
+        predictions[0]
+    );
 }
 
 export function generateAlphaFoldInfoSummary(
@@ -116,19 +154,43 @@ export function generateAlphaFoldInfoSummary(
 }
 
 const predictionMetadataCache: {
-    [uniprotId: string]: Promise<AlphaFoldPredictionMetadata | null>;
+    [cacheKey: string]: Promise<AlphaFoldPredictionMetadata | null>;
 } = {};
+
+const predictionsListCache: {
+    [cacheKey: string]: Promise<AlphaFoldPredictionMetadata[]>;
+} = {};
+
+export function fetchAlphaFoldPredictionsCached(
+    uniprotId: string,
+    apiBaseUrl?: string
+): Promise<AlphaFoldPredictionMetadata[]> {
+    const key = `${uniprotId.toUpperCase()}_${apiBaseUrl || 'default'}_all`;
+
+    if (!predictionsListCache[key]) {
+        predictionsListCache[key] = fetchAlphaFoldPredictions(
+            uniprotId,
+            apiBaseUrl
+        );
+    }
+
+    return predictionsListCache[key];
+}
 
 export function fetchAlphaFoldPredictionMetadataCached(
     uniprotId: string,
-    apiBaseUrl?: string
+    apiBaseUrl?: string,
+    isoform: number = ALPHAFOLD_DEFAULT_ISOFORM
 ): Promise<AlphaFoldPredictionMetadata | null> {
-    const key = `${uniprotId.toUpperCase()}_${apiBaseUrl || 'default'}`;
+    const key = `${uniprotId.toUpperCase()}_${
+        apiBaseUrl || 'default'
+    }_F${isoform}`;
 
     if (!predictionMetadataCache[key]) {
         predictionMetadataCache[key] = fetchAlphaFoldPredictionMetadata(
             uniprotId,
-            apiBaseUrl
+            apiBaseUrl,
+            isoform
         );
     }
 
@@ -162,12 +224,14 @@ export async function fetchAlphaFoldModelText(
     options?: {
         baseUrl?: string;
         format?: 'cif' | 'pdb';
+        isoform?: number;
     }
 ): Promise<string> {
     const format = options?.format ?? 'cif';
     const urls = getAlphaFoldModelUrlCandidates(uniprotId, {
         baseUrl: options?.baseUrl,
         format,
+        isoform: options?.isoform,
     });
 
     let lastError: Error | null = null;
@@ -196,4 +260,33 @@ export async function fetchAlphaFoldModelText(
         lastError ??
         new Error(`No AlphaFold model found for UniProt ${uniprotId}`)
     );
+}
+
+export async function fetchAlphaFoldPlddtByResidue(
+    plddtDocUrl: string
+): Promise<{ [position: number]: number }> {
+    const response = await fetch(plddtDocUrl);
+
+    if (!response.ok) {
+        throw new Error(
+            `AlphaFold pLDDT fetch failed (${response.status}): ${plddtDocUrl}`
+        );
+    }
+
+    const data = await response.json();
+    const scores: number[] | undefined = Array.isArray(data)
+        ? data[0]?.confidenceScore
+        : data?.confidenceScore;
+
+    if (!scores || scores.length === 0) {
+        throw new Error('AlphaFold pLDDT response contained no scores');
+    }
+
+    const byResidue: { [position: number]: number } = {};
+
+    scores.forEach((score, index) => {
+        byResidue[index + 1] = score;
+    });
+
+    return byResidue;
 }
