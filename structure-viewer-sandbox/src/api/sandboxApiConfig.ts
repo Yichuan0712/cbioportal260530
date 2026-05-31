@@ -1,4 +1,4 @@
-/** Official G2S (same as cBioPortal.org). Vite proxies /g2s-api -> g2s.genomenexus.org */
+/** Local G2S (pdb-alignment-web :5443). Vite proxies /g2s-api -> https://localhost:5443 */
 export const G2S_API_BASE =
     import.meta.env.VITE_G2S_URL || '/g2s-api';
 

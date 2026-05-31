@@ -57,9 +57,9 @@ export default defineConfig({
         strictPort: true,
         proxy: {
             '/g2s-api': {
-                target: 'https://g2s.genomenexus.org',
+                target: 'https://localhost:5443',
                 changeOrigin: true,
-                secure: true,
+                secure: false,
                 rewrite: path => path.replace(/^\/g2s-api/, ''),
             },
             '/genomenexus-api': {

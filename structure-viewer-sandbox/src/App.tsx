@@ -22,7 +22,7 @@ const SandboxApp = observer(function SandboxApp() {
 
     const dataSourceLabel = USE_MOCK_G2S_DATA
         ? 'mock fixtures'
-        : `g2s.genomenexus.org + Genome Nexus (${SANDBOX_HUGO_GENE})`;
+        : `local G2S :5443 + Genome Nexus (${SANDBOX_HUGO_GENE})`;
 
     const mutationSourceLabel = USE_MOCK_MUTATIONS
         ? 'mock mutations'
