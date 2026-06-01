@@ -1,0 +1,21 @@
+---
+description: Do not modify the 6/02 structure-viewer sandbox archive
+alwaysApply: true
+---
+
+# Read-only archive: structure-viewer-sandbox-v0602
+
+`structure-viewer-sandbox-v0602/` is a **frozen snapshot** (2026-06-02). Treat it as read-only reference.
+See `structure-viewer-sandbox-v0602/READONLY-ARCHIVE.md` for contents.
+
+## Do not
+
+- Create, edit, delete, or rename any file under `structure-viewer-sandbox-v0602/`
+- Run refactors, copy-back scripts, or bulk fixes inside that directory
+- Suggest copying changes from the live sandbox into v0602
+
+## Do instead
+
+- Make all structure-viewer work in `structure-viewer-sandbox/`
+- Copy **from** v0602 **to** the live sandbox only when the user explicitly asks to restore/compare
+- If the user needs archive content, read it for reference only
