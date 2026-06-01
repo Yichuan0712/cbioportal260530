@@ -1,0 +1,11 @@
+.resultsPageMutationsGeneTabs .tab-content {
+    .mutationMapperMetaColumn label {
+        margin-right: 5px;
+    }
+}
+
+/* Filter badge pills: inline styles from BadgeSelector must win over Bootstrap .badge */
+.legendPanel :global(.badge) {
+    border-style: solid;
+    border-width: thin;
+}

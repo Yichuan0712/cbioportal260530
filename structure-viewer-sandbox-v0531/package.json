@@ -1,0 +1,45 @@
+{
+  "name": "structure-viewer-sandbox",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Standalone sandbox for cBioPortal 3D Structure floating panel",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "3dmol": "^2.5.4",
+    "classnames": "^2.3.2",
+    "jquery": "^3.7.1",
+    "lodash": "^4.17.21",
+    "mobx": "^6.0.4",
+    "mobx-react": "^7.6.0",
+    "rc-tooltip": "^5.3.1",
+    "react": "^17.0.2",
+    "react-bootstrap": "^0.33.1",
+    "react-dom": "^17.0.2",
+    "react-draggable": "^3.3.0",
+    "react-file-download": "^0.3.5",
+    "react-if": "^2.1.0",
+    "react-text-truncate": "^0.9.0",
+    "better-react-spinkit": "^2.0.0-6",
+    "autobind-decorator": "^2.4.0"
+  },
+  "devDependencies": {
+    "@babel/plugin-proposal-decorators": "^7.23.9",
+    "@babel/plugin-transform-class-properties": "^7.23.3",
+    "@types/jquery": "^3.5.29",
+    "@types/lodash": "^4.14.202",
+    "@types/react": "^17.0.75",
+    "@types/react-dom": "^17.0.25",
+    "@vitejs/plugin-react": "^4.2.1",
+    "sass": "^1.69.7",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.11",
+    "vitest": "^2.1.8"
+  }
+}
