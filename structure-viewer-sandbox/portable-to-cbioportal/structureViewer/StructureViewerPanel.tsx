@@ -88,6 +88,15 @@ export interface IStructureViewerPanelProps extends IProteinImpactTypeColors {
     alphafoldFilesBaseUrl?: string;
     /** Override AlphaFold metadata API base (sandbox dev uses `/alphafold-api` proxy). */
     alphafoldApiBaseUrl?: string;
+    /**
+     * Genome Nexus annotations indexed by genomic location (same map as Mutation Mapper table).
+     * Optional: when omitted, 3D mutation labels fall back to cBioPortal mutation fields only.
+     *
+     * **cBioPortal wiring (NOT in copy-back):** pass from
+     * `cbioportal-frontend/src/shared/components/mutationMapper/MutationMapper.tsx`
+     * → `structureViewerPanel` → `this.props.store.indexedVariantAnnotations.result`.
+     * See `portable-to-cbioportal/INTEGRATION.md`.
+     */
     indexedVariantAnnotations?: {
         [genomicLocation: string]: VariantAnnotation;
     };

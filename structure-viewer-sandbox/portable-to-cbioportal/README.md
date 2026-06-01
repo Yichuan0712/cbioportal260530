@@ -60,6 +60,15 @@ Copy-Item -Recurse -Force `
 2. 打开 Mutation Mapper → **View 3D Structure**
 3. 确认 G2S / PDB 数据仍正常（沙箱 mock 不会一起过去）
 
+## copy-back 之外的一处接线（3D 突变 label 详情）
+
+Genome Nexus 富文本（HGVSp、SIFT、PolyPhen 等）需要 Mutation Mapper **传入**已有注释，Panel 不会自己请求。
+
+详见 **[INTEGRATION.md](./INTEGRATION.md)**。  
+主项目文件：`cbioportal-frontend/src/shared/components/mutationMapper/MutationMapper.tsx` → `structureViewerPanel` → `indexedVariantAnnotations={this.props.store.indexedVariantAnnotations.result}`。
+
+参考快照（不随 copy-back 部署）：`portable-to-cbioportal/reference/MutationMapper.tsx`。
+
 ## 不要拷回的内容
 
 - `structure-viewer-sandbox/src/App.tsx` — demo 页面
