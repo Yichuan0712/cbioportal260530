@@ -99,14 +99,24 @@ export default class StructureViewerPanel extends React.Component<
     IStructureViewerPanelProps,
     {}
 > {
+    /** Panel chrome width when body is collapsed (header only). */
+    private static readonly COLLAPSED_PANEL_WIDTH = 480;
+
     /** Minimum px of panel that must stay inside the viewport when dragging. */
     private static readonly MIN_DRAG_VISIBLE_PX = 56;
 
     /** Collapsed 3D canvas size (fixed; not recomputed from DOM on source switch). */
     private static readonly COLLAPSED_VIEWER_WIDTH = 450;
     private static readonly COLLAPSED_VIEWER_HEIGHT = 350;
-    private static readonly EXPANDED_WIDTH_SCALE = 5 / 3;
-    private static readonly EXPANDED_HEIGHT_SCALE = 2;
+    private static readonly EXPANDED_WIDTH_SCALE = 1.55;
+    private static readonly EXPANDED_HEIGHT_SCALE = 1.75;
+    private static readonly VIEWER_FOOTER_HEIGHT = 40;
+    private static readonly EXPANDED_CONTROLS_WIDTH = 280;
+    private static readonly EXPANDED_COLUMN_GAP = 12;
+    /** Keep panel inset from viewport edges when clamping expanded size. */
+    private static readonly EXPANDED_VIEWPORT_MARGIN = 24;
+    /** Header, body vertical padding, and viewer footer (approx.). */
+    private static readonly EXPANDED_PANEL_CHROME_HEIGHT = 120;
 
     @observable protected isCollapsed: boolean = false;
     @observable protected isIncreasedSize: boolean = false;
@@ -219,6 +229,17 @@ export default class StructureViewerPanel extends React.Component<
         }
 
         return StructureSource.PDB;
+    }
+
+    private static getViewportSize(): { width: number; height: number } {
+        if (typeof window === 'undefined') {
+            return { width: 1920, height: 1080 };
+        }
+
+        return {
+            width: window.innerWidth,
+            height: window.innerHeight,
+        };
     }
 
     public selectionTitle(
@@ -785,7 +806,10 @@ export default class StructureViewerPanel extends React.Component<
                             style={{ marginRight: 5, cursor: 'pointer' }}
                         />
                         <i
-                            className="fa fa-minus-circle"
+                            className={classnames('fa', {
+                                'fa-minus-circle': !this.isCollapsed,
+                                'fa-plus-circle': this.isCollapsed,
+                            })}
                             onClick={this.toggleCollapse}
                             style={{ marginRight: 5, cursor: 'pointer' }}
                         />
@@ -873,19 +897,18 @@ export default class StructureViewerPanel extends React.Component<
     }
 
     public mainContent() {
+        if (this.isIncreasedSize) {
+            return this.expandedMainContent();
+        }
+
+        return this.compactMainContent();
+    }
+
+    public compactMainContent() {
         if (this.isStructureViewerReady) {
             return (
                 <span>
-                    <div className="row">{this.structureInfoContent()}</div>
-                    <If condition={this.residueWarning.length > 0}>
-                        <div className="row">
-                            <div className="col col-sm-12 text-center">
-                                <span className="text-danger">
-                                    {this.residueWarning}
-                                </span>
-                            </div>
-                        </div>
-                    </If>
+                    {this.structureDetailsSection()}
                     <div
                         className={classnames(
                             'row',
@@ -893,76 +916,211 @@ export default class StructureViewerPanel extends React.Component<
                         )}
                         style={{ paddingTop: 5, paddingBottom: 5 }}
                     >
-                        <div
-                            className={classnames(
-                                'col col-sm-12',
-                                styles['structure-viewer-overlay'],
-                                'structure-viewer-no-drag'
-                            )}
-                        >
-                            <StructureViewer
-                                structureSource={this.structureSource}
-                                displayBoundMolecules={
-                                    this.structureSource ===
-                                        StructureSource.PDB &&
-                                    this.displayBoundMolecules
-                                }
-                                proteinScheme={this.proteinScheme}
-                                proteinColor={this.proteinColor}
-                                sideChain={this.sideChain}
-                                mutationColor={this.mutationColor}
-                                mutationLabels={this.mutationLabels}
-                                onMutationLabelClick={
-                                    this.handleMutationLabelClick
-                                }
-                                pinnedResidue={this.pinnedResidue}
-                                paeResiduePair={this.paeResiduePairHighlight}
-                                onResidueClick={this.handleResidueClick}
-                                pdbId={this.viewerPdbId || ''}
-                                uniprotId={this.props.uniprotId}
-                                chainId={this.viewerChainId || ''}
-                                residues={this.viewerResidues}
-                                alphafoldIsoform={this.alphafoldIsoform}
-                                alphafoldFilesBaseUrl={
-                                    this.props.alphafoldFilesBaseUrl
-                                }
-                                onStructureLoadStatusChange={
-                                    this.handleStructureLoadStatusChange
-                                }
-                                bounds={this.structureViewerBounds}
-                                containerRef={this.containerRefHandler}
-                            />
-                            {this.structureViewerStatusOverlay()}
-                            {this.paeHeatmapOverlay()}
-                            <MutationLabelDetailPanel
-                                label={this.selectedMutationLabel}
-                                onClose={this.handleMutationLabelDetailClose}
-                            />
+                        <div className="col col-sm-12">
+                            {this.structureViewerWithFooter()}
                         </div>
                     </div>
                 </span>
             );
-        } else {
-            // show loader
-            return (
-                <div style={{ textAlign: 'center' }}>
-                    {this.structureSource === StructureSource.ALPHAFOLD &&
-                    !this.props.uniprotId ? (
-                        <span className="text-danger">
-                            No UniProt accession available for AlphaFold.
-                        </span>
-                    ) : (
-                        <ThreeBounce
-                            size={25}
-                            style={{
-                                display: 'inline-block',
-                                padding: 25,
-                            }}
-                        />
-                    )}
+        }
+
+        return this.structureViewerLoadingContent();
+    }
+
+    public expandedMainContent() {
+        return (
+            <div className={styles['expanded-two-column']}>
+                <div
+                    className={styles['expanded-viewer-column']}
+                    style={
+                        typeof this.structureViewerWidth === 'number'
+                            ? { width: this.structureViewerWidth }
+                            : undefined
+                    }
+                >
+                    {this.isStructureViewerReady
+                        ? this.structureViewerWithFooter()
+                        : this.structureViewerLoadingContent()}
                 </div>
+                <div
+                    className={classnames(
+                        styles['expanded-controls-column'],
+                        'structure-viewer-no-drag'
+                    )}
+                    style={{
+                        maxHeight:
+                            typeof this.expandedControlsMaxHeight === 'number'
+                                ? this.expandedControlsMaxHeight
+                                : undefined,
+                    }}
+                >
+                    {this.expandedControlsSection()}
+                </div>
+            </div>
+        );
+    }
+
+    public structureDetailsSection() {
+        return (
+            <>
+                <div className="row">{this.structureInfoContent()}</div>
+                <If condition={this.residueWarning.length > 0}>
+                    <div className="row">
+                        <div className="col col-sm-12 text-center">
+                            <span className="text-danger">
+                                {this.residueWarning}
+                            </span>
+                        </div>
+                    </div>
+                </If>
+            </>
+        );
+    }
+
+    public structureViewerWithFooter() {
+        return (
+            <>
+                {this.structureViewerSection()}
+                {this.viewerToolbarSection()}
+            </>
+        );
+    }
+
+    public viewerToolbarSection() {
+        return (
+            <div
+                className={classnames(
+                    styles['structure-viewer-footer'],
+                    'structure-viewer-no-drag'
+                )}
+            >
+                {this.topToolbar()}
+            </div>
+        );
+    }
+
+    public structureViewerSection() {
+        return (
+            <div
+                className={classnames(
+                    styles['structure-viewer-overlay'],
+                    'structure-viewer-no-drag'
+                )}
+                style={
+                    this.isIncreasedSize &&
+                    typeof this.structureViewerWidth === 'number'
+                        ? { width: this.structureViewerWidth }
+                        : undefined
+                }
+            >
+                <StructureViewer
+                    structureSource={this.structureSource}
+                    displayBoundMolecules={
+                        this.structureSource === StructureSource.PDB &&
+                        this.displayBoundMolecules
+                    }
+                    proteinScheme={this.proteinScheme}
+                    proteinColor={this.proteinColor}
+                    sideChain={this.sideChain}
+                    mutationColor={this.mutationColor}
+                    mutationLabels={this.mutationLabels}
+                    onMutationLabelClick={this.handleMutationLabelClick}
+                    pinnedResidue={this.pinnedResidue}
+                    paeResiduePair={this.paeResiduePairHighlight}
+                    onResidueClick={this.handleResidueClick}
+                    pdbId={this.viewerPdbId || ''}
+                    uniprotId={this.props.uniprotId}
+                    chainId={this.viewerChainId || ''}
+                    residues={this.viewerResidues}
+                    alphafoldIsoform={this.alphafoldIsoform}
+                    alphafoldFilesBaseUrl={this.props.alphafoldFilesBaseUrl}
+                    onStructureLoadStatusChange={
+                        this.handleStructureLoadStatusChange
+                    }
+                    bounds={this.structureViewerBounds}
+                    containerRef={this.containerRefHandler}
+                />
+                {this.structureViewerStatusOverlay()}
+                {this.paeHeatmapOverlay()}
+                <MutationLabelDetailPanel
+                    label={this.selectedMutationLabel}
+                    onClose={this.handleMutationLabelDetailClose}
+                />
+            </div>
+        );
+    }
+
+    public structureViewerLoadingContent() {
+        const expandedSizeStyle =
+            this.isIncreasedSize &&
+            typeof this.structureViewerWidth === 'number' &&
+            typeof this.structureViewerHeight === 'number'
+                ? {
+                      minWidth: this.structureViewerWidth,
+                      minHeight: this.structureViewerHeight,
+                  }
+                : undefined;
+
+        return (
+            <div
+                className={classnames(styles['structure-viewer-loading'], {
+                    [styles['structure-viewer-loading--expanded']]:
+                        this.isIncreasedSize,
+                })}
+                style={expandedSizeStyle}
+            >
+                {this.structureSource === StructureSource.ALPHAFOLD &&
+                !this.props.uniprotId ? (
+                    <span className="text-danger">
+                        No UniProt accession available for AlphaFold.
+                    </span>
+                ) : (
+                    <ThreeBounce
+                        size={25}
+                        style={{
+                            display: 'inline-block',
+                            padding: 25,
+                        }}
+                    />
+                )}
+            </div>
+        );
+    }
+
+    public panelControlsSection() {
+        if (this.isIncreasedSize) {
+            return (
+                <>
+                    {this.proteinStyleMenu()}
+                    {this.mutationStyleMenu()}
+                    {this.structureDisplayOptionsMenu()}
+                </>
             );
         }
+
+        return (
+            <>
+                <div className="row">
+                    <div className="col col-sm-6">
+                        {this.proteinStyleMenu()}
+                    </div>
+                    <div className="col col-sm-6">
+                        {this.mutationStyleMenu()}
+                    </div>
+                </div>
+                {this.structureDisplayOptionsMenu()}
+            </>
+        );
+    }
+
+    public expandedControlsSection() {
+        return (
+            <div className={styles['expanded-controls-section']}>
+                {this.structureSourceMenu()}
+                {this.structureDetailsSection()}
+                {this.panelControlsSection()}
+            </div>
+        );
     }
 
     public structureViewerStatusOverlay() {
@@ -1022,8 +1180,22 @@ export default class StructureViewerPanel extends React.Component<
                         ref={this.dragPanelRefHandler}
                         className={classnames(styles['main-3d-panel'], {
                             [styles['increased-size-panel']]:
-                                this.isIncreasedSize,
+                                this.isIncreasedSize && !this.isCollapsed,
+                            [styles['collapsed-header-panel']]: this.isCollapsed,
                         })}
+                        style={
+                            this.isCollapsed
+                                ? {
+                                      width: StructureViewerPanel.COLLAPSED_PANEL_WIDTH,
+                                  }
+                                : this.isIncreasedSize
+                                  ? {
+                                        width: this.expandedPanelWidth,
+                                        maxWidth: this.expandedMaxPanelWidth,
+                                        maxHeight: this.expandedMaxPanelHeight,
+                                    }
+                                  : undefined
+                        }
                     >
                         <div className="structure-viewer-header row">
                             {this.header()}
@@ -1034,23 +1206,19 @@ export default class StructureViewerPanel extends React.Component<
                         <div
                             className={classnames(styles['body'], {
                                 [styles['collapsed-panel']]: this.isCollapsed,
+                                [styles['expanded-body']]:
+                                    this.isIncreasedSize && !this.isCollapsed,
                             })}
                         >
-                            {this.structureSourceMenu()}
-                            {this.mainContent()}
-                            <div className="row">
-                                {this.topToolbar()}
-                                <hr />
-                            </div>
-                            <div className="row">
-                                <div className="col col-sm-6">
-                                    {this.proteinStyleMenu()}
-                                </div>
-                                <div className="col col-sm-6">
-                                    {this.mutationStyleMenu()}
-                                </div>
-                            </div>
-                            {this.structureDisplayOptionsMenu()}
+                            {this.isIncreasedSize ? (
+                                this.mainContent()
+                            ) : (
+                                <>
+                                    {this.structureSourceMenu()}
+                                    {this.mainContent()}
+                                    {this.panelControlsSection()}
+                                </>
+                            )}
                         </div>
                     </div>
                 </Draggable>
@@ -1211,8 +1379,14 @@ export default class StructureViewerPanel extends React.Component<
         this.displayBoundMolecules = !this.displayBoundMolecules;
     }
 
+    @action
     private handlePaeHeatmapChange(evt: React.FormEvent<HTMLInputElement>) {
-        this.displayPaeHeatmap = (evt.target as HTMLInputElement).checked;
+        const checked = (evt.target as HTMLInputElement).checked;
+        this.displayPaeHeatmap = checked;
+
+        if (!checked) {
+            this.paeFocusCell = null;
+        }
     }
 
     @action
@@ -1417,9 +1591,9 @@ export default class StructureViewerPanel extends React.Component<
 
     @computed get structureViewerWidth(): number | string {
         if (this.isIncreasedSize) {
-            return Math.floor(
-                this.viewerCanvasWidth *
-                    StructureViewerPanel.EXPANDED_WIDTH_SCALE
+            return Math.min(
+                this.expandedIdealViewerWidth,
+                this.expandedMaxViewerWidth
             );
         }
 
@@ -1428,13 +1602,92 @@ export default class StructureViewerPanel extends React.Component<
 
     @computed get structureViewerHeight(): number | string {
         if (this.isIncreasedSize) {
-            return Math.floor(
-                this.viewerCanvasHeight *
-                    StructureViewerPanel.EXPANDED_HEIGHT_SCALE
+            return Math.min(
+                this.expandedIdealViewerHeight,
+                this.expandedMaxViewerHeight
             );
         }
 
         return this.viewerCanvasHeight;
+    }
+
+    @computed get expandedIdealViewerWidth(): number {
+        return Math.floor(
+            this.viewerCanvasWidth *
+                StructureViewerPanel.EXPANDED_WIDTH_SCALE
+        );
+    }
+
+    @computed get expandedIdealViewerHeight(): number {
+        return Math.floor(
+            this.viewerCanvasHeight *
+                StructureViewerPanel.EXPANDED_HEIGHT_SCALE
+        );
+    }
+
+    @computed get expandedMaxPanelWidth(): number {
+        void this.dragLayoutTick;
+
+        return (
+            StructureViewerPanel.getViewportSize().width -
+            StructureViewerPanel.EXPANDED_VIEWPORT_MARGIN
+        );
+    }
+
+    @computed get expandedMaxPanelHeight(): number {
+        void this.dragLayoutTick;
+
+        return (
+            StructureViewerPanel.getViewportSize().height -
+            StructureViewerPanel.EXPANDED_VIEWPORT_MARGIN
+        );
+    }
+
+    @computed get expandedPanelChromeWidth(): number {
+        return (
+            StructureViewerPanel.EXPANDED_CONTROLS_WIDTH +
+            StructureViewerPanel.EXPANDED_COLUMN_GAP +
+            20 +
+            4
+        );
+    }
+
+    @computed get expandedMaxViewerWidth(): number {
+        return Math.max(
+            StructureViewerPanel.COLLAPSED_VIEWER_WIDTH,
+            this.expandedMaxPanelWidth - this.expandedPanelChromeWidth
+        );
+    }
+
+    @computed get expandedMaxViewerHeight(): number {
+        return Math.max(
+            StructureViewerPanel.COLLAPSED_VIEWER_HEIGHT,
+            this.expandedMaxPanelHeight -
+                StructureViewerPanel.EXPANDED_PANEL_CHROME_HEIGHT
+        );
+    }
+
+    /** Expanded panel outer width (border-box): viewer + controls + gap + body padding + border. */
+    @computed get expandedPanelWidth(): number {
+        const viewerWidth =
+            typeof this.structureViewerWidth === 'number'
+                ? this.structureViewerWidth
+                : StructureViewerPanel.COLLAPSED_VIEWER_WIDTH;
+
+        return Math.min(
+            viewerWidth + this.expandedPanelChromeWidth,
+            this.expandedMaxPanelWidth
+        );
+    }
+
+    @computed get expandedControlsMaxHeight(): number | string {
+        const viewerHeight = this.structureViewerHeight;
+
+        if (typeof viewerHeight === 'number') {
+            return viewerHeight + StructureViewerPanel.VIEWER_FOOTER_HEIGHT;
+        }
+
+        return viewerHeight;
     }
 
     @computed get isStructureViewerReady(): boolean {
@@ -1960,6 +2213,7 @@ export default class StructureViewerPanel extends React.Component<
     @computed get paeResiduePairHighlight(): IPaeResiduePairHighlight | null {
         if (
             this.structureSource !== StructureSource.ALPHAFOLD ||
+            !this.displayPaeHeatmap ||
             !this.paeFocusCell
         ) {
             return null;
@@ -1973,7 +2227,7 @@ export default class StructureViewerPanel extends React.Component<
     }
 
     @computed get paeCellSummary(): PaeCellSummary | null {
-        if (!this.paeData || !this.paeFocusCell) {
+        if (!this.displayPaeHeatmap || !this.paeData || !this.paeFocusCell) {
             return null;
         }
 
