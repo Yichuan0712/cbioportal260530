@@ -261,6 +261,9 @@ export default class SandboxG2SStore {
             if (preferred) {
                 store.selectUid(store.getChainUid(preferred));
             } else {
+                console.warn(
+                    `[sandbox] Preferred PDB ${SANDBOX_PREFERRED_PDB} not in G2S alignments for ${SANDBOX_HUGO_GENE}; using top-ranked chain (${chains[0]?.pdbId}).`
+                );
                 store.selectFirstChain();
             }
         } else {

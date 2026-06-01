@@ -3,7 +3,7 @@ import { Mutation } from 'cbioportal-ts-api-client';
 import { IPdbChain, PdbAlignmentIndex } from 'shared/model/Pdb';
 import { PUTATIVE_DRIVER } from '../lib/putativeDriverUtils';
 
-/** SOX9 — matches screenshot transcript NM_000346 / ENST00000245479 */
+/** SOX9 — official demo: NM_000346 / ENST00000245479 / P48436 */
 export const MOCK_UNIPROT_ID = 'P48436';
 
 export const PDB_MOCK_CHAIN: IPdbChain = {
@@ -18,7 +18,7 @@ export const PDB_MOCK_CHAIN: IPdbChain = {
 
 export const PDB_HEADER_MOCK: PdbHeader = {
     pdbId: '1p98',
-    title: 'mock sox9 structure entry',
+    title: 'mock structure entry (may differ from live G2S top chain)',
     compound: [{ chain: ['a'], molecule: 'sox9' }],
 };
 

@@ -3,7 +3,7 @@
 独立开发 cBioPortal Mutation Mapper **3D Structure** 浮层面板的沙箱。  
 **不会**自动部署到 cBioPortal 官网；要上线需把 `portable-to-cbioportal/structureViewer/` 拷回 `cbioportal-frontend`（见文末）。
 
-默认基因：**SOX9**（与截图一致：NM_000346 / ENST00000245479）。
+默认对齐 [MSK Impact 50k + SOX9 的官网 Mutations 页](https://www.cbioportal.org/results/mutations?cancer_study_list=msk_impact_50k_2026&case_set_id=msk_impact_50k_2026_all&mutations_transcript_id=ENST00000245479&mutations_gene=SOX9)：**SOX9** / **NM_000346** / **ENST00000245479** / study **`msk_impact_50k_2026`**。PDB 3D 的链名仍可能显示 **SOX17**（G2S 自动选链，与官网相同现象）。
 
 ---
 
@@ -60,7 +60,7 @@ npm run test     # Vitest 单测（AlphaFold / 突变密度等 utils）
 | PDB 对齐 | 本地 G2S（`/g2s-api` → `localhost:5443`），失败时链列表可能为空 |
 | AlphaFold | EBI（开发环境走 `/alphafold-files`、`/alphafold-api` 代理） |
 
-默认 **19 个 pan-cancer study** 拉 SOX9 突变；与官网某一页 Results View **不一定**条数相同（沙箱无 OQL / 样本过滤）。
+默认仅 **`msk_impact_50k_2026`** 拉 SOX9 突变（live 约 **1354** 条，与官网 API 一致）。沙箱无 OQL / 结构变异；左栏 Driver 过滤为 demo。
 
 ### Mock：完全离线
 
@@ -82,9 +82,10 @@ VITE_USE_MOCK_MUTATIONS=true
 
 | 变量 | 作用 |
 |------|------|
-| `VITE_HUGO_GENE` | 基因符号，默认 `SOX9` |
-| `VITE_CBIOPORTAL_STUDY_IDS` | 逗号分隔 studyId，收窄突变来源 |
-| `VITE_PREFERRED_PDB` | 多链时强制 PDB id（小写） |
+| `VITE_HUGO_GENE` | 默认 `SOX9` |
+| `VITE_CBIOPORTAL_STUDY_IDS` | 默认 `msk_impact_50k_2026` |
+| `VITE_REFSEQ_TRANSCRIPT` | 默认 `NM_000346` |
+| `VITE_PREFERRED_PDB` | 留空 = 与官网一样自动选 G2S 排名第一的链（勿设 `4euw` 除非要对 SOX9 PDB） |
 | `VITE_USE_MOCK_DATA` | `true` = mock G2S/PDB |
 | `VITE_USE_MOCK_MUTATIONS` | `true` = mock 突变 |
 
@@ -109,9 +110,9 @@ VITE_USE_MOCK_MUTATIONS=true
 
 ## 与官网的差异（预期行为）
 
-- **同一 PDB**，沙箱与官网 3D 可能有**小色差/位点差**：沙箱突变集合、filter 与 Results View 不完全相同。  
-- **3D 模块**接入官方后，颜色与数据由 **Mutation Mapper** 传入，默认 **Mutation Type** 着色与旧官方 3D 一致。  
-- 沙箱 **Driver/VUS 数字** 用简化 annotate，**不必**与官网逐条对齐；仅作 demo。
+- **突变来源**默认已与上述 MSK 50k + SOX9 链接对齐；左栏 **Driver/VUS 过滤** 仍为沙箱 demo。  
+- **PDB 链名**可能与官网一样出现 **SOX17**（查询基因仍是 SOX9）；**AlphaFold** 应为 **SOX9 / P48436**。  
+- 官网 Results 含 **structural variants** 等 profile；沙箱只拉 **mutation** profile。
 
 ---
 
