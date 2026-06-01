@@ -870,59 +870,7 @@ export default class StructureVisualizer3D extends StructureVisualizer {
         this.applyHoverInteractionState(!this.needToUpdateResiduesOnly);
     }
 
-    private isHoverHighlightEnabled(): boolean {
-        return !(
-            this.props.structureSource === StructureSource.ALPHAFOLD &&
-            this.props.proteinColor === ProteinColor.PLDDT
-        );
-    }
-
-    private disableHoverInteraction(): void {
-        this.cancelHoverSyncFrame();
-        this._hoveredResi = null;
-        this._hoveredChain = null;
-        this._hoverPickReady = false;
-
-        if (
-            this._3dMolViewer &&
-            typeof this._3dMolViewer.setHoverable === 'function'
-        ) {
-            this._3dMolViewer.setHoverable({}, false);
-        }
-    }
-
-    private clearHoverHighlightOnly(): boolean {
-        if (!this._appliedHover || !this._3dMolViewer) {
-            this._appliedHover = null;
-            return false;
-        }
-
-        const pinned = this.props.pinnedResidue || null;
-
-        if (!this.residuePinsEqual(this._appliedHover, pinned)) {
-            this.restoreInteractionOverlay(
-                this._appliedHover.chain,
-                this._appliedHover.resi
-            );
-        }
-
-        this._appliedHover = null;
-        return true;
-    }
-
     private applyHoverInteractionState(forceReapply = false): void {
-        if (!this.isHoverHighlightEnabled()) {
-            this.disableHoverInteraction();
-            let dirty = this.clearHoverHighlightOnly();
-            dirty = this.syncPinnedHighlight(forceReapply) || dirty;
-            dirty = this.syncPaePairHighlight(forceReapply) || dirty;
-
-            if (dirty && this._3dMolViewer) {
-                this._3dMolViewer.render();
-            }
-            return;
-        }
-
         this.ensureHoverPickTargets();
         this.syncResidueHighlights(forceReapply);
     }
@@ -979,11 +927,6 @@ export default class StructureVisualizer3D extends StructureVisualizer {
      * One-time hover pick registration. Highlight overlays the same cartoon/ribbon/trace geometry.
      */
     private ensureHoverPickTargets(): void {
-        if (!this.isHoverHighlightEnabled()) {
-            this.disableHoverInteraction();
-            return;
-        }
-
         if (
             !this._3dMolViewer ||
             this._hoverPickReady ||
@@ -1012,7 +955,7 @@ export default class StructureVisualizer3D extends StructureVisualizer {
 
     /** Pinned + hover: ball-and-stick on residue (cartoon outline fallback). */
     private syncResidueHighlights(forceReapply = false): void {
-        if (!this._3dMolViewer || !this.isHoverHighlightEnabled()) {
+        if (!this._3dMolViewer) {
             return;
         }
 
@@ -1491,10 +1434,6 @@ export default class StructureVisualizer3D extends StructureVisualizer {
         y?: number;
         z?: number;
     }) {
-        if (!this.isHoverHighlightEnabled()) {
-            return;
-        }
-
         if (!this._3dMolViewer || !atom || atom.resi == null || !atom.chain) {
             return;
         }
@@ -1512,10 +1451,6 @@ export default class StructureVisualizer3D extends StructureVisualizer {
     }
 
     private handleResidueUnhover(atom: { chain?: string; resi?: number }) {
-        if (!this.isHoverHighlightEnabled()) {
-            return;
-        }
-
         if (
             !this._3dMolViewer ||
             this._hoveredResi == null ||

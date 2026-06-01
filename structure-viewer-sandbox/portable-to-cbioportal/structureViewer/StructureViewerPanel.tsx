@@ -526,12 +526,11 @@ export default class StructureViewerPanel extends React.Component<
                                 <option value={StructureSource.PDB}>
                                     PDB (experimental)
                                 </option>
-                                <option
-                                    value={StructureSource.ALPHAFOLD}
-                                    disabled={!this.props.uniprotId}
-                                >
-                                    AlphaFold (predicted)
-                                </option>
+                                {this.props.uniprotId && (
+                                    <option value={StructureSource.ALPHAFOLD}>
+                                        AlphaFold (predicted)
+                                    </option>
+                                )}
                             </FormControl>
                         </div>
                     </div>
@@ -603,26 +602,23 @@ export default class StructureViewerPanel extends React.Component<
                                 <option value={ProteinColor.UNIFORM}>
                                     uniform
                                 </option>
-                                <option
-                                    value={ProteinColor.SECONDARY_STRUCTURE}
-                                    disabled={
-                                        this.colorBySecondaryStructureDisabled
-                                    }
-                                >
-                                    secondary structure
-                                </option>
-                                <option
-                                    value={ProteinColor.NC_RAINBOW}
-                                    disabled={this.colorByNCRainbowDisabled}
-                                >
-                                    N-C rainbow
-                                </option>
-                                <option
-                                    value={ProteinColor.ATOM_TYPE}
-                                    disabled={this.colorByAtomTypeDisabled}
-                                >
-                                    atom type
-                                </option>
+                                {!this.colorBySecondaryStructureDisabled && (
+                                    <option
+                                        value={ProteinColor.SECONDARY_STRUCTURE}
+                                    >
+                                        secondary structure
+                                    </option>
+                                )}
+                                {!this.colorByNCRainbowDisabled && (
+                                    <option value={ProteinColor.NC_RAINBOW}>
+                                        N-C rainbow
+                                    </option>
+                                )}
+                                {!this.colorByAtomTypeDisabled && (
+                                    <option value={ProteinColor.ATOM_TYPE}>
+                                        atom type
+                                    </option>
+                                )}
                                 {this.structureSource ===
                                     StructureSource.ALPHAFOLD && (
                                     <option value={ProteinColor.PLDDT}>
@@ -1092,8 +1088,8 @@ export default class StructureViewerPanel extends React.Component<
             return (
                 <>
                     {this.proteinStyleMenu()}
-                    {this.mutationStyleMenu()}
                     {this.structureDisplayOptionsMenu()}
+                    {this.mutationStyleMenu()}
                 </>
             );
         }
