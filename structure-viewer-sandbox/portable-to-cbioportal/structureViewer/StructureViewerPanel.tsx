@@ -92,10 +92,6 @@ export default class StructureViewerPanel extends React.Component<
     /** Minimum px of panel that must stay inside the viewport when dragging. */
     private static readonly MIN_DRAG_VISIBLE_PX = 56;
 
-    /** Expanded panel max height as fraction of viewport (no page/panel scrollbars). */
-    private static readonly EXPANDED_PANEL_VH = 0.88;
-    private static readonly EXPANDED_PANEL_CHROME_FALLBACK_PX = 340;
-    private static readonly EXPANDED_VIEWER_MIN_HEIGHT_PX = 200;
     /** Collapsed 3D canvas size (fixed; not recomputed from DOM on source switch). */
     private static readonly COLLAPSED_VIEWER_WIDTH = 450;
     private static readonly COLLAPSED_VIEWER_HEIGHT = 350;
@@ -397,26 +393,6 @@ export default class StructureViewerPanel extends React.Component<
         );
     }
 
-    public alphafoldMappingNote() {
-        if (this.structureSource !== StructureSource.ALPHAFOLD) {
-            return null;
-        }
-
-        return (
-            <div className="row">
-                <div
-                    className={classnames(
-                        'col col-sm-12',
-                        styles['alphafold-mapping-note']
-                    )}
-                >
-                    Mutations are placed by UniProt protein position
-                    (temporary until G2S AlphaFold alignment is available).
-                </div>
-            </div>
-        );
-    }
-
     public isoformMenu() {
         if (
             this.structureSource !== StructureSource.ALPHAFOLD ||
@@ -462,7 +438,7 @@ export default class StructureViewerPanel extends React.Component<
 
     public structureSourceMenu() {
         return (
-            <span>
+            <div className={styles['structure-source-menu']}>
                 <div className="row">
                     <div className="col col-sm-12">
                         <div className="row">
@@ -497,12 +473,7 @@ export default class StructureViewerPanel extends React.Component<
                     </div>
                 </div>
                 {this.isoformMenu()}
-                <div className="row">
-                    <div className="col col-sm-10 col-sm-offset-1">
-                        <hr />
-                    </div>
-                </div>
-            </span>
+            </div>
         );
     }
 
@@ -592,60 +563,48 @@ export default class StructureViewerPanel extends React.Component<
                         </div>
                     </div>
                 </div>
-                <div
-                    className={classnames(
-                        'row',
-                        styles['style-menu-secondary-row']
-                    )}
-                >
-                    <div className="col col-sm-12">
-                        <div className="row">
-                            <span
-                                className={
-                                    styles['style-menu-secondary-spacer']
-                                }
-                            >
-                                &nbsp;
-                            </span>
-                        </div>
-                        <div
-                            className={classnames(
-                                'row',
-                                styles['style-menu-secondary-control']
-                            )}
-                        >
-                            {this.structureSource === StructureSource.PDB && (
-                                <Checkbox
-                                    checked={this.displayBoundMolecules}
-                                    onChange={
-                                        this
-                                            .handleBoundMoleculeChange as React.FormEventHandler<
-                                            any
-                                        >
-                                    }
-                                >
-                                    Display bound molecules{' '}
-                                    {this.defaultInfoTooltip(
-                                        this.boundMoleculesTooltipContent()
-                                    )}
-                                </Checkbox>
-                            )}
-                            {this.structureSource ===
-                                StructureSource.ALPHAFOLD && (
-                                <Checkbox
-                                    checked={this.colorByPlddtEnabled}
-                                    onChange={this.handlePlddtColorChange}
-                                >
-                                    Display pLDDT coloring{' '}
-                                    {this.defaultInfoTooltip(
-                                        this.plddtTooltipContent()
-                                    )}
-                                </Checkbox>
-                            )}
-                        </div>
-                    </div>
-                </div>
             </span>
+        );
+    }
+
+    public structureDisplayOptionsMenu() {
+        return (
+            <div
+                className={classnames(
+                    'row',
+                    styles['structure-display-options-row']
+                )}
+            >
+                <div className="col col-sm-12">
+                    {this.structureSource === StructureSource.PDB && (
+                        <Checkbox
+                            checked={this.displayBoundMolecules}
+                            onChange={
+                                this
+                                    .handleBoundMoleculeChange as React.FormEventHandler<
+                                    any
+                                >
+                            }
+                        >
+                            Display bound molecules{' '}
+                            {this.defaultInfoTooltip(
+                                this.boundMoleculesTooltipContent()
+                            )}
+                        </Checkbox>
+                    )}
+                    {this.structureSource === StructureSource.ALPHAFOLD && (
+                        <Checkbox
+                            checked={this.colorByPlddtEnabled}
+                            onChange={this.handlePlddtColorChange}
+                        >
+                            Display pLDDT coloring{' '}
+                            {this.defaultInfoTooltip(
+                                this.plddtTooltipContent()
+                            )}
+                        </Checkbox>
+                    )}
+                </div>
+            </div>
         );
     }
 
@@ -797,7 +756,6 @@ export default class StructureViewerPanel extends React.Component<
             return (
                 <span>
                     <div className="row">{this.structureInfoContent()}</div>
-                    {this.alphafoldMappingNote()}
                     <If condition={this.residueWarning.length > 0}>
                         <div className="row">
                             <div className="col col-sm-12 text-center">
@@ -808,7 +766,10 @@ export default class StructureViewerPanel extends React.Component<
                         </div>
                     </If>
                     <div
-                        className="row"
+                        className={classnames(
+                            'row',
+                            styles['structure-viewer-section']
+                        )}
                         style={{ paddingTop: 5, paddingBottom: 5 }}
                     >
                         <div
@@ -940,13 +901,6 @@ export default class StructureViewerPanel extends React.Component<
                             [styles['increased-size-panel']]:
                                 this.isIncreasedSize,
                         })}
-                        style={
-                            this.isIncreasedSize
-                                ? {
-                                      maxHeight: `${this.expandedPanelMaxHeightPx}px`,
-                                  }
-                                : undefined
-                        }
                     >
                         <div className="structure-viewer-header row">
                             {this.header()}
@@ -971,6 +925,7 @@ export default class StructureViewerPanel extends React.Component<
                                     {this.mutationStyleMenu()}
                                 </div>
                             </div>
+                            {this.structureDisplayOptionsMenu()}
                         </div>
                     </div>
                 </Draggable>
@@ -1150,6 +1105,8 @@ export default class StructureViewerPanel extends React.Component<
         } else {
             this.loadPlddtScores();
         }
+
+        this.scheduleDragBoundsRefresh();
     }
 
     private handleIsoformChange(evt: React.FormEvent<HTMLSelectElement>) {
@@ -1162,14 +1119,17 @@ export default class StructureViewerPanel extends React.Component<
         this.selectedMutationLabel = null;
         this.pinnedResidue = null;
         this.loadPlddtScores();
+        this.scheduleDragBoundsRefresh();
     }
 
+    @action
     private handleStructureLoadStatusChange(
         status: StructureLoadStatus,
         message?: string
     ) {
         this.structureLoadStatus = status;
         this.structureLoadError = message || null;
+        this.scheduleDragBoundsRefresh();
     }
 
     @action
@@ -1199,6 +1159,8 @@ export default class StructureViewerPanel extends React.Component<
         if (this.structureSource === StructureSource.ALPHAFOLD) {
             await this.loadPlddtScores();
         }
+
+        this.scheduleDragBoundsRefresh();
     }
 
     @action
@@ -1275,13 +1237,6 @@ export default class StructureViewerPanel extends React.Component<
         }
     }
 
-    @computed get expandedPanelMaxHeightPx(): number {
-        void this.dragLayoutTick;
-        return Math.floor(
-            window.innerHeight * StructureViewerPanel.EXPANDED_PANEL_VH
-        );
-    }
-
     @computed get structureViewerBounds(): {
         width: number | string;
         height: number | string;
@@ -1305,49 +1260,13 @@ export default class StructureViewerPanel extends React.Component<
 
     @computed get structureViewerHeight(): number | string {
         if (this.isIncreasedSize) {
-            void this.dragLayoutTick;
-
-            const preferredHeight = Math.floor(
+            return Math.floor(
                 this.viewerCanvasHeight *
                     StructureViewerPanel.EXPANDED_HEIGHT_SCALE
-            );
-
-            return Math.min(
-                preferredHeight,
-                this.getExpandedMaxViewerHeight()
             );
         }
 
         return this.viewerCanvasHeight;
-    }
-
-    /** Max 3D canvas height so the expanded panel fits in the viewport without scrollbars. */
-    private getExpandedMaxViewerHeight(): number {
-        const maxPanelHeight = this.expandedPanelMaxHeightPx;
-        const targetViewerHeight = Math.floor(
-            this.viewerCanvasHeight *
-                StructureViewerPanel.EXPANDED_HEIGHT_SCALE
-        );
-
-        if (this._dragPanelRef) {
-            const measuredViewerHeight =
-                this._3dMolDiv?.offsetHeight ?? targetViewerHeight;
-            const chromeHeight =
-                this._dragPanelRef.offsetHeight - measuredViewerHeight;
-
-            if (chromeHeight > 0) {
-                return Math.max(
-                    StructureViewerPanel.EXPANDED_VIEWER_MIN_HEIGHT_PX,
-                    maxPanelHeight - chromeHeight
-                );
-            }
-        }
-
-        return Math.max(
-            StructureViewerPanel.EXPANDED_VIEWER_MIN_HEIGHT_PX,
-            maxPanelHeight -
-                StructureViewerPanel.EXPANDED_PANEL_CHROME_FALLBACK_PX
-        );
     }
 
     @computed get isStructureViewerReady(): boolean {

@@ -2,7 +2,7 @@
     width: 480px;
     position: absolute;
     float: right;
-    overflow: hidden;
+    overflow: visible;
     right: 0;
     top: 0;
     z-index: 100;
@@ -39,7 +39,7 @@
 
 .increased-size-panel {
     width: auto;
-    overflow: hidden;
+    overflow: visible;
 }
 
 .main-3d-panel canvas {
@@ -132,6 +132,8 @@
 }
 
 .structure-display-options-row {
+    margin-top: 8px;
+    min-height: 28px;
     padding-top: 4px;
     padding-bottom: 4px;
 
@@ -141,19 +143,8 @@
     }
 }
 
-.style-menu-secondary-row {
-    margin-top: 8px;
-}
-
-.style-menu-secondary-spacer {
-    visibility: hidden;
-}
-
-.style-menu-secondary-control {
-    :global(.checkbox) {
-        margin-top: 0;
-        margin-bottom: 0;
-    }
+.structure-source-menu {
+    margin-bottom: 10px;
 }
 
 .structure-viewer-no-drag {
@@ -182,13 +173,6 @@
 
 .structure-viewer-status--error {
     color: #a94442;
-}
-
-.alphafold-mapping-note {
-    font-size: 12px;
-    color: #888888;
-    font-style: italic;
-    margin-top: 4px;
 }
 
 .mutation-label-detail {
