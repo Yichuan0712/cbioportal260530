@@ -101,8 +101,10 @@ export interface IStructureVisualizerProps {
     uniformMutationColor?: string;
     // color of the user-selected mutations
     highlightColor?: string;
-    /** Golden outline when hovering a residue in the 3D viewer. */
+    /** Outline when hovering a residue in the 3D viewer (distinct from Lollipop yellow). */
     hoverOutlineColor?: string;
+    /** Outline for click-pinned residue (distinct from hover). */
+    pinOutlineColor?: string;
     /** Residue to keep highlighted after click (independent of hover). */
     pinnedResidue?: IStructureResiduePin | null;
     /** When ALPHAFOLD, enables pLDDT coloring and other source-specific behavior. */
@@ -137,7 +139,8 @@ abstract class StructureVisualizer {
         mutationColor: MutationColor.MUTATION_TYPE,
         uniformMutationColor: '#8A2BE2',
         highlightColor: '#FFDD00',
-        hoverOutlineColor: '#FFEB3B',
+        hoverOutlineColor: '#FFDD00',
+        pinOutlineColor: '#FFDD00',
         sideChain: SideChain.SELECTED,
     };
 

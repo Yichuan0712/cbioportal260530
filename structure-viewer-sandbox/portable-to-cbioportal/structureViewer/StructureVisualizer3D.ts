@@ -112,9 +112,20 @@ export default class StructureVisualizer3D extends StructureVisualizer {
     } | null = null;
 
     private get hoverOutlineColor(): string {
+        const defaultProps = StructureVisualizer.defaultProps;
         return (
             this.props.hoverOutlineColor ||
-            StructureVisualizer.defaultProps.hoverOutlineColor
+            this.props.highlightColor ||
+            defaultProps.highlightColor
+        );
+    }
+
+    private get pinOutlineColor(): string {
+        const defaultProps = StructureVisualizer.defaultProps;
+        return (
+            this.props.pinOutlineColor ||
+            this.props.highlightColor ||
+            defaultProps.highlightColor
         );
     }
 
@@ -982,7 +993,7 @@ export default class StructureVisualizer3D extends StructureVisualizer {
         this._hoverPickReady = true;
     }
 
-    /** Pinned + hover both use cartoon overlay on the residue spline. */
+    /** Pinned + hover: ball-and-stick on residue (cartoon outline fallback). */
     private syncResidueHighlights(forceReapply = false): void {
         if (!this._3dMolViewer || !this.isHoverHighlightEnabled()) {
             return;
@@ -1024,7 +1035,11 @@ export default class StructureVisualizer3D extends StructureVisualizer {
         }
 
         if (pinned) {
-            this.applyCartoonHoverOutline(pinned.chain, pinned.resi);
+            this.applyResidueInteractionHighlight(
+                pinned.chain,
+                pinned.resi,
+                this.pinOutlineColor
+            );
         }
 
         this._appliedPin = pinned ? { ...pinned } : null;
@@ -1060,7 +1075,11 @@ export default class StructureVisualizer3D extends StructureVisualizer {
         }
 
         if (hover && !this.residuePinsEqual(hover, pinned)) {
-            this.applyCartoonHoverOutline(hover.chain, hover.resi);
+            this.applyResidueInteractionHighlight(
+                hover.chain,
+                hover.resi,
+                this.hoverOutlineColor
+            );
             dirty = true;
         }
 
@@ -1098,9 +1117,8 @@ export default class StructureVisualizer3D extends StructureVisualizer {
         }
     }
 
-    private getCartoonHoverOverlayStyle(): any {
-        const scheme = this.props.proteinScheme;
-        const color = this.formatColor(this.hoverOutlineColor);
+    private getCartoonOverlayStyle(scheme: ProteinScheme, colorHex: string): any {
+        const color = this.formatColor(colorHex);
 
         if (
             this._cachedOverlayStyle &&
@@ -1147,15 +1165,66 @@ export default class StructureVisualizer3D extends StructureVisualizer {
         return style;
     }
 
-    /** Gold cartoon overlay — follows 3Dmol cartoon/ribbon/trace path. */
-    private applyCartoonHoverOutline(chain: string, resi: number): void {
+    private shouldShowInteractionSideChain(
+        props: IStructureVisualizerProps = this.props
+    ): boolean {
+        return (
+            props.sideChain !== SideChain.NONE &&
+            props.proteinScheme !== ProteinScheme.SPACE_FILLING
+        );
+    }
+
+    private getInteractionResidueBaseStyle(
+        props: IStructureVisualizerProps = this.props
+    ): AtomStyleSpec {
+        const defaultProps = StructureVisualizer.defaultProps;
+        const style = _.cloneDeep(
+            StructureVisualizer3D.PROTEIN_SCHEME_PRESETS[props.proteinScheme]
+        );
+        this.addTransparencyToStyle(
+            props.chainTranslucency || defaultProps.chainTranslucency,
+            style
+        );
+        return style;
+    }
+
+    /** Hover/pin: same ball-and-stick as lollipop highlight; outline if side chains off. */
+    private applyResidueInteractionHighlight(
+        chain: string,
+        resi: number,
+        colorHex: string
+    ): void {
+        if (!this._3dMolViewer) {
+            return;
+        }
+
+        if (this.shouldShowInteractionSideChain()) {
+            this.updateSideChain(
+                chain,
+                { resi },
+                this.props.proteinScheme,
+                colorHex,
+                this.getInteractionResidueBaseStyle()
+            );
+            return;
+        }
+
+        this.applyCartoonResidueOutline(chain, resi, colorHex);
+    }
+
+    /** Cartoon overlay on one residue — follows 3Dmol cartoon/ribbon/trace path. */
+    private applyCartoonResidueOutline(
+        chain: string,
+        resi: number,
+        colorHex: string
+    ): void {
         if (!this._3dMolViewer) {
             return;
         }
 
         this._3dMolViewer.addStyle(
             { chain, resi },
-            this.getCartoonHoverOverlayStyle(),
+            this.getCartoonOverlayStyle(this.props.proteinScheme, colorHex),
             true
         );
     }
@@ -1199,6 +1268,7 @@ export default class StructureVisualizer3D extends StructureVisualizer {
 
         if (helpers.length === 0) {
             const color = props.chainColor || defaultProps.chainColor;
+            this.applyStyleForSelector(selector, _.cloneDeep(style));
             this.setColor(color, selector, style);
             return;
         }
@@ -1227,6 +1297,7 @@ export default class StructureVisualizer3D extends StructureVisualizer {
                 color = props.chainColor || defaultProps.chainColor;
             }
 
+            this.applyStyleForSelector(helperSelector, _.cloneDeep(style));
             this.setColor(color, helperSelector, style);
 
             const displaySideChain =
