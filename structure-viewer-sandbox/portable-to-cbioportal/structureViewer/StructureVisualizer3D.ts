@@ -1223,24 +1223,15 @@ export default class StructureVisualizer3D extends StructureVisualizer {
     private shouldShowInteractionSideChain(
         props: IStructureVisualizerProps = this.props
     ): boolean {
-        return (
-            props.sideChain !== SideChain.NONE &&
-            props.proteinScheme !== ProteinScheme.SPACE_FILLING
-        );
+        return props.proteinScheme !== ProteinScheme.SPACE_FILLING;
     }
 
-    private getInteractionResidueBaseStyle(
-        props: IStructureVisualizerProps = this.props
-    ): AtomStyleSpec {
-        const defaultProps = StructureVisualizer.defaultProps;
-        const style = _.cloneDeep(
-            StructureVisualizer3D.PROTEIN_SCHEME_PRESETS[props.proteinScheme]
+    private schemeUsesCartoonBackbone(scheme: ProteinScheme): boolean {
+        return (
+            scheme === ProteinScheme.CARTOON ||
+            scheme === ProteinScheme.TRACE ||
+            scheme === ProteinScheme.RIBBON
         );
-        this.addTransparencyToStyle(
-            props.chainTranslucency || defaultProps.chainTranslucency,
-            style
-        );
-        return style;
     }
 
     /** Hover/pin: ball-and-stick on side chains plus matching cartoon/trace backbone. */
@@ -1254,13 +1245,7 @@ export default class StructureVisualizer3D extends StructureVisualizer {
         }
 
         if (this.shouldShowInteractionSideChain()) {
-            this.updateSideChain(
-                chain,
-                { resi },
-                this.props.proteinScheme,
-                colorHex,
-                this.getInteractionResidueBaseStyle()
-            );
+            this.applyInteractionSideChain(chain, resi, colorHex);
 
             if (this.schemeUsesCartoonBackbone(this.props.proteinScheme)) {
                 this.applyCartoonResidueOutline(chain, resi, colorHex);
@@ -1271,11 +1256,25 @@ export default class StructureVisualizer3D extends StructureVisualizer {
         this.applyCartoonResidueOutline(chain, resi, colorHex);
     }
 
-    private schemeUsesCartoonBackbone(scheme: ProteinScheme): boolean {
-        return (
-            scheme === ProteinScheme.CARTOON ||
-            scheme === ProteinScheme.TRACE ||
-            scheme === ProteinScheme.RIBBON
+    /** Layer ball-and-stick on one residue without replacing its base cartoon/pLDDT style. */
+    private applyInteractionSideChain(
+        chain: string,
+        resi: number,
+        colorHex: string
+    ): void {
+        if (!this._3dMolViewer || !this.shouldShowInteractionSideChain()) {
+            return;
+        }
+
+        const visColor = this.formatColor(colorHex);
+
+        this._3dMolViewer.addStyle(
+            { chain, resi },
+            {
+                stick: { color: visColor, radius: 0.16 },
+                sphere: { color: visColor, scale: 0.3 },
+            },
+            true
         );
     }
 
