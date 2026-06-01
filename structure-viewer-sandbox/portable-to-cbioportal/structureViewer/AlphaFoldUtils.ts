@@ -1,3 +1,9 @@
+import {
+    AlphaFoldPaeData,
+    parseAlphaFoldPaeJson,
+    resolveAlphaFoldDocUrl,
+} from './AlphaFoldPaeUtils';
+
 export const ALPHAFOLD_DEFAULT_CHAIN = 'A';
 export const ALPHAFOLD_DEFAULT_ISOFORM = 1;
 /** EBI currently serves v6; older v4 URLs return 404. */
@@ -59,6 +65,7 @@ export type AlphaFoldPredictionMetadata = {
     latestVersion: number;
     globalMetricValue?: number;
     plddtDocUrl?: string;
+    paeDocUrl?: string;
     cifUrl?: string;
 };
 
@@ -88,6 +95,7 @@ function mapApiEntryToMetadata(entry: any): AlphaFoldPredictionMetadata {
         latestVersion: entry.latestVersion,
         globalMetricValue: entry.globalMetricValue,
         plddtDocUrl: entry.plddtDocUrl,
+        paeDocUrl: entry.paeDocUrl,
         cifUrl: entry.cifUrl,
     };
 }
@@ -289,4 +297,20 @@ export async function fetchAlphaFoldPlddtByResidue(
     });
 
     return byResidue;
+}
+
+export async function fetchAlphaFoldPaeData(
+    paeDocUrl: string,
+    filesBaseUrl?: string
+): Promise<AlphaFoldPaeData> {
+    const url = resolveAlphaFoldDocUrl(paeDocUrl, filesBaseUrl);
+    const response = await fetch(url);
+
+    if (!response.ok) {
+        throw new Error(`AlphaFold PAE fetch failed (${response.status}): ${url}`);
+    }
+
+    const data = await response.json();
+
+    return parseAlphaFoldPaeJson(data);
 }

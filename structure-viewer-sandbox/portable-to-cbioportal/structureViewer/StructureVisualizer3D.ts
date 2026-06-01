@@ -77,6 +77,7 @@ export default class StructureVisualizer3D extends StructureVisualizer {
         'chainId',
         'residues',
         'pinnedResidue',
+        'paeResiduePair',
         'onResidueClick',
         'onMutationLabelClick',
         'onStructureLoadStatusChange',
@@ -103,6 +104,11 @@ export default class StructureVisualizer3D extends StructureVisualizer {
     private _hoverPickReady = false;
     private _clickPickReady = false;
     private _appliedPin: { chain: string; resi: number } | null = null;
+    private _appliedPaePair: {
+        chain: string;
+        alignedResi: number;
+        partnerResi: number;
+    } | null = null;
     private _appliedHover: { chain: string; resi: number } | null = null;
     private _hoverSyncFrame: number | null = null;
     private _cachedOverlayStyle: {
@@ -478,17 +484,26 @@ export default class StructureVisualizer3D extends StructureVisualizer {
             prevProps.pinnedResidue,
             props.pinnedResidue
         );
+        const paePairChanged = !_.isEqual(
+            prevProps.paeResiduePair,
+            props.paeResiduePair
+        );
 
         this.setProps(props);
 
-        // Click-to-pin: skip MobX state churn + full style pass when only pin changed.
+        // Click-to-pin / PAE pair: skip full style pass when only highlights changed.
         if (
-            pinChanged &&
+            (pinChanged || paePairChanged) &&
             chainId === this.state.chainId &&
             this.incomingResiduePositionsMatch(residues) &&
             this.propsAffectingStylesEqual(prevProps, props)
         ) {
-            this.syncPinnedHighlight(false);
+            let dirty = this.syncPinnedHighlight(false);
+            dirty = this.syncPaePairHighlight(false) || dirty;
+
+            if (dirty && this._3dMolViewer) {
+                this._3dMolViewer.render();
+            }
             return;
         }
 
@@ -885,7 +900,7 @@ export default class StructureVisualizer3D extends StructureVisualizer {
         const pinned = this.props.pinnedResidue || null;
 
         if (!this.residuePinsEqual(this._appliedHover, pinned)) {
-            this.restoreHoveredResidueStyle(
+            this.restoreInteractionOverlay(
                 this._appliedHover.chain,
                 this._appliedHover.resi
             );
@@ -900,6 +915,7 @@ export default class StructureVisualizer3D extends StructureVisualizer {
             this.disableHoverInteraction();
             let dirty = this.clearHoverHighlightOnly();
             dirty = this.syncPinnedHighlight(forceReapply) || dirty;
+            dirty = this.syncPaePairHighlight(forceReapply) || dirty;
 
             if (dirty && this._3dMolViewer) {
                 this._3dMolViewer.render();
@@ -941,6 +957,7 @@ export default class StructureVisualizer3D extends StructureVisualizer {
         this._hoverPickReady = false;
         this._clickPickReady = false;
         this._appliedPin = null;
+        this._appliedPaePair = null;
         this._appliedHover = null;
         this._cachedOverlayStyle = null;
     }
@@ -1000,6 +1017,7 @@ export default class StructureVisualizer3D extends StructureVisualizer {
         }
 
         let dirty = this.syncPinnedHighlight(forceReapply);
+        dirty = this.syncPaePairHighlight(forceReapply) || dirty;
 
         if (forceReapply) {
             this._appliedHover = null;
@@ -1028,7 +1046,7 @@ export default class StructureVisualizer3D extends StructureVisualizer {
         }
 
         if (this._appliedPin) {
-            this.restoreHoveredResidueStyle(
+            this.restoreInteractionOverlay(
                 this._appliedPin.chain,
                 this._appliedPin.resi
             );
@@ -1043,6 +1061,98 @@ export default class StructureVisualizer3D extends StructureVisualizer {
         }
 
         this._appliedPin = pinned ? { ...pinned } : null;
+        return true;
+    }
+
+    private paePairsEqual(
+        a:
+            | {
+                  chain: string;
+                  alignedResi: number;
+                  partnerResi: number;
+              }
+            | null
+            | undefined,
+        b:
+            | {
+                  chain: string;
+                  alignedResi: number;
+                  partnerResi: number;
+              }
+            | null
+            | undefined
+    ): boolean {
+        if (!a && !b) {
+            return true;
+        }
+
+        if (!a || !b) {
+            return false;
+        }
+
+        return (
+            a.chain.toUpperCase() === b.chain.toUpperCase() &&
+            a.alignedResi === b.alignedResi &&
+            a.partnerResi === b.partnerResi
+        );
+    }
+
+    private restorePaePairHighlight(pair: {
+        chain: string;
+        alignedResi: number;
+        partnerResi: number;
+    }): void {
+        this.restoreInteractionOverlay(pair.chain, pair.alignedResi);
+
+        if (pair.alignedResi !== pair.partnerResi) {
+            this.restoreInteractionOverlay(pair.chain, pair.partnerResi);
+        }
+    }
+
+    private applyPaePairHighlight(pair: {
+        chain: string;
+        alignedResi: number;
+        partnerResi: number;
+    }): void {
+        this.applyResidueInteractionHighlight(
+            pair.chain,
+            pair.alignedResi,
+            this.pinOutlineColor
+        );
+
+        if (pair.alignedResi !== pair.partnerResi) {
+            this.applyResidueInteractionHighlight(
+                pair.chain,
+                pair.partnerResi,
+                this.pinOutlineColor
+            );
+        }
+    }
+
+    private syncPaePairHighlight(forceReapply = false): boolean {
+        if (!this._3dMolViewer) {
+            return false;
+        }
+
+        if (forceReapply) {
+            this._appliedPaePair = null;
+        }
+
+        const pair = this.props.paeResiduePair || null;
+
+        if (this.paePairsEqual(pair, this._appliedPaePair)) {
+            return false;
+        }
+
+        if (this._appliedPaePair) {
+            this.restorePaePairHighlight(this._appliedPaePair);
+        }
+
+        if (pair) {
+            this.applyPaePairHighlight(pair);
+        }
+
+        this._appliedPaePair = pair ? { ...pair } : null;
         return true;
     }
 
@@ -1067,7 +1177,7 @@ export default class StructureVisualizer3D extends StructureVisualizer {
             this._appliedHover &&
             !this.residuePinsEqual(this._appliedHover, pinned)
         ) {
-            this.restoreHoveredResidueStyle(
+            this.restoreInteractionOverlay(
                 this._appliedHover.chain,
                 this._appliedHover.resi
             );
@@ -1075,11 +1185,13 @@ export default class StructureVisualizer3D extends StructureVisualizer {
         }
 
         if (hover && !this.residuePinsEqual(hover, pinned)) {
-            this.applyResidueInteractionHighlight(
-                hover.chain,
-                hover.resi,
-                this.hoverOutlineColor
-            );
+            if (!this.residueInPaePair(hover.chain, hover.resi)) {
+                this.applyResidueInteractionHighlight(
+                    hover.chain,
+                    hover.resi,
+                    this.hoverOutlineColor
+                );
+            }
             dirty = true;
         }
 
@@ -1188,7 +1300,7 @@ export default class StructureVisualizer3D extends StructureVisualizer {
         return style;
     }
 
-    /** Hover/pin: same ball-and-stick as lollipop highlight; outline if side chains off. */
+    /** Hover/pin: ball-and-stick on side chains plus matching cartoon/trace backbone. */
     private applyResidueInteractionHighlight(
         chain: string,
         resi: number,
@@ -1206,10 +1318,22 @@ export default class StructureVisualizer3D extends StructureVisualizer {
                 colorHex,
                 this.getInteractionResidueBaseStyle()
             );
+
+            if (this.schemeUsesCartoonBackbone(this.props.proteinScheme)) {
+                this.applyCartoonResidueOutline(chain, resi, colorHex);
+            }
             return;
         }
 
         this.applyCartoonResidueOutline(chain, resi, colorHex);
+    }
+
+    private schemeUsesCartoonBackbone(scheme: ProteinScheme): boolean {
+        return (
+            scheme === ProteinScheme.CARTOON ||
+            scheme === ProteinScheme.TRACE ||
+            scheme === ProteinScheme.RIBBON
+        );
     }
 
     /** Cartoon overlay on one residue — follows 3Dmol cartoon/ribbon/trace path. */
@@ -1227,6 +1351,49 @@ export default class StructureVisualizer3D extends StructureVisualizer {
             this.getCartoonOverlayStyle(this.props.proteinScheme, colorHex),
             true
         );
+    }
+
+    private residueInPaePair(chain: string, resi: number): boolean {
+        const pair = this.props.paeResiduePair;
+
+        if (!pair) {
+            return false;
+        }
+
+        return (
+            pair.chain.toUpperCase() === chain.toUpperCase() &&
+            (pair.alignedResi === resi || pair.partnerResi === resi)
+        );
+    }
+
+    /** Re-apply pin or PAE pair highlight after a transient hover overlay is removed. */
+    private reapplyPersistentResidueHighlight(
+        chain: string,
+        resi: number
+    ): void {
+        const pinned = this.props.pinnedResidue || null;
+
+        if (pinned && this.residuePinsEqual({ chain, resi }, pinned)) {
+            this.applyResidueInteractionHighlight(
+                chain,
+                resi,
+                this.pinOutlineColor
+            );
+            return;
+        }
+
+        if (this.residueInPaePair(chain, resi)) {
+            this.applyResidueInteractionHighlight(
+                chain,
+                resi,
+                this.pinOutlineColor
+            );
+        }
+    }
+
+    private restoreInteractionOverlay(chain: string, resi: number): void {
+        this.restoreHoveredResidueStyle(chain, resi);
+        this.reapplyPersistentResidueHighlight(chain, resi);
     }
 
     private restoreHoveredResidueStyle(chain: string, resi: number): void {

@@ -21,6 +21,13 @@ export interface IStructureResiduePin {
     resi: number;
 }
 
+/** PAE heatmap selection: highlight aligned (row) and partner (col) residues. */
+export interface IPaeResiduePairHighlight {
+    chain: string;
+    alignedResi: number;
+    partnerResi: number;
+}
+
 export enum ProteinScheme {
     CARTOON,
     SPACE_FILLING,
@@ -107,6 +114,12 @@ export interface IStructureVisualizerProps {
     pinOutlineColor?: string;
     /** Residue to keep highlighted after click (independent of hover). */
     pinnedResidue?: IStructureResiduePin | null;
+    /** PAE matrix cell selection — highlights aligned + partner residues in 3D. */
+    paeResiduePair?: IPaeResiduePairHighlight | null;
+    /** Outline for the aligned (row) residue in a PAE pair highlight. */
+    paeAlignedOutlineColor?: string;
+    /** Outline for the partner (col) residue in a PAE pair highlight. */
+    paePartnerOutlineColor?: string;
     /** When ALPHAFOLD, enables pLDDT coloring and other source-specific behavior. */
     structureSource?: StructureSource;
     /** AlphaFold isoform index (F1, F2, …). Defaults to 1. */
@@ -141,6 +154,8 @@ abstract class StructureVisualizer {
         highlightColor: '#FFDD00',
         hoverOutlineColor: '#FFDD00',
         pinOutlineColor: '#FFDD00',
+        paeAlignedOutlineColor: '#FFDD00',
+        paePartnerOutlineColor: '#FFDD00',
         sideChain: SideChain.SELECTED,
     };
 

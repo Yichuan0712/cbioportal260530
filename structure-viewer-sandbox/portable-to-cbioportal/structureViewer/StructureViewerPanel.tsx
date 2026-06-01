@@ -29,6 +29,9 @@ import {
 import StructureViewer from './StructureViewer';
 import PdbChainInfo from '../PdbChainInfo';
 import AlphaFoldChainInfo from './AlphaFoldChainInfo';
+import AlphaFoldPaeHeatmap, {
+    PaeHeatmapHighlight,
+} from './AlphaFoldPaeHeatmap';
 import {
     ProteinScheme,
     ProteinColor,
@@ -39,6 +42,7 @@ import {
     IResidueSpec,
     IMutationLabelSpec,
     IStructureResiduePin,
+    IPaeResiduePairHighlight,
 } from './StructureVisualizer';
 import PyMolScriptGenerator from './PyMolScriptGenerator';
 import MutationLabelDetailPanel from './MutationLabelDetailPanel';
@@ -50,6 +54,7 @@ import {
     fetchAlphaFoldPredictionsCached,
     fetchAlphaFoldPredictionMetadataCached,
     fetchAlphaFoldPlddtByResidue,
+    fetchAlphaFoldPaeData,
     getAlphaFoldModelId,
 } from './AlphaFoldUtils';
 import {
@@ -57,6 +62,11 @@ import {
     ALPHAFOLD_PLDDT_LOW_THRESHOLD,
     getLowPlddtPositions,
 } from './AlphaFoldPlddtUtils';
+import {
+    AlphaFoldPaeData,
+    getPaeCellSummary,
+    PaeCellSummary,
+} from './AlphaFoldPaeUtils';
 import {
     getColorForMutationDensity,
     getMaxMutationCount,
@@ -111,7 +121,7 @@ export default class StructureViewerPanel extends React.Component<
     @observable protected structureSource: StructureSource =
         StructureSource.PDB;
     @observable protected displayBoundMolecules: boolean = true;
-    @observable protected displayPlddtColoring: boolean = false;
+    @observable protected displayPaeHeatmap: boolean = false;
     @observable protected structureLoadStatus: StructureLoadStatus = 'idle';
     @observable protected structureLoadError: string | null = null;
     @observable protected alphafoldIsoform: number = ALPHAFOLD_DEFAULT_ISOFORM;
@@ -119,6 +129,14 @@ export default class StructureViewerPanel extends React.Component<
         ALPHAFOLD_DEFAULT_ISOFORM,
     ];
     @observable protected plddtByResidue: { [position: number]: number } = {};
+    @observable protected paeData: AlphaFoldPaeData | null = null;
+    @observable protected paeFocusCell: { row: number; col: number } | null =
+        null;
+    @observable protected paeLoadStatus:
+        | 'idle'
+        | 'loading'
+        | 'complete'
+        | 'error' = 'idle';
     @observable private dragLayoutTick = 0;
     @observable private viewerCanvasWidth: number =
         StructureViewerPanel.COLLAPSED_VIEWER_WIDTH;
@@ -164,7 +182,8 @@ export default class StructureViewerPanel extends React.Component<
         this.handleStructureSourceChange = this.handleStructureSourceChange.bind(
             this
         );
-        this.handlePlddtColorChange = this.handlePlddtColorChange.bind(this);
+        this.handlePaeHeatmapChange = this.handlePaeHeatmapChange.bind(this);
+        this.handlePaeCellClick = this.handlePaeCellClick.bind(this);
         this.handleIsoformChange = this.handleIsoformChange.bind(this);
         this.handleStructureLoadStatusChange = this.handleStructureLoadStatusChange.bind(
             this
@@ -220,8 +239,12 @@ export default class StructureViewerPanel extends React.Component<
         );
     }
 
-    public defaultInfoTooltip(tooltip: JSX.Element, placement: string = 'top') {
-        const tooltipCallback = () => tooltip;
+    public defaultInfoTooltip(
+        tooltip: JSX.Element | (() => JSX.Element),
+        placement: string = 'top'
+    ) {
+        const tooltipCallback =
+            typeof tooltip === 'function' ? tooltip : () => tooltip;
 
         return (
             <DefaultTooltip
@@ -254,6 +277,20 @@ export default class StructureViewerPanel extends React.Component<
                 <b>Atom Type:</b> Colors the structure with respect to the atom
                 type (CPK color scheme). This color option is only available for
                 the space-filling protein scheme. <br />
+                <b>pLDDT:</b> AlphaFold only — colors each residue by predicted
+                local distance difference test (pLDDT) scores from the model
+                B-factor column.
+                <ul className={styles['plddt-legend-list']}>
+                    {ALPHAFOLD_PLDDT_LEGEND.map(item => (
+                        <li key={item.label}>
+                            <span
+                                className={styles['plddt-swatch']}
+                                style={{ backgroundColor: item.color }}
+                            />
+                            {item.label}
+                        </li>
+                    ))}
+                </ul>
                 <br />
                 The selected chain is always displayed with full opacity while
                 the rest of the structure has some transparency to help better
@@ -342,24 +379,30 @@ export default class StructureViewerPanel extends React.Component<
         );
     }
 
-    public plddtTooltipContent() {
+    public paeTooltipContent() {
+        const maxPae = this.paeData?.maxPae ?? 31.75;
+        const scaleLabel = maxPae.toFixed(1);
+
         return (
-            <div style={{ maxWidth: 400, maxHeight: 200, overflowY: 'auto' }}>
-                Colors each residue by AlphaFold predicted local distance
-                difference test (pLDDT) scores from the model B-factor column.{' '}
+            <div style={{ maxWidth: 400, maxHeight: 240, overflowY: 'auto' }}>
+                Predicted Aligned Error (PAE) shows how confidently the model
+                predicts the relative distance between residue pairs (in Å).
                 <br />
                 <br />
-                <ul className={styles['plddt-legend-list']}>
-                    {ALPHAFOLD_PLDDT_LEGEND.map(item => (
-                        <li key={item.label}>
-                            <span
-                                className={styles['plddt-swatch']}
-                                style={{ backgroundColor: item.color }}
-                            />
-                            {item.label}
-                        </li>
-                    ))}
-                </ul>
+                Crosshairs follow mutations selected in the table or a residue
+                clicked in the 3D view. Click the heatmap to inspect a residue
+                pair; aligned and partner residues are highlighted on the
+                structure.
+                <br />
+                <br />
+                <div className={styles['pae-tooltip-legend']}>
+                    <span>0</span>
+                    <span className={styles['pae-tooltip-legend-bar']} />
+                    <span>{scaleLabel} Å</span>
+                </div>
+                <div className={styles['pae-tooltip-legend-caption']}>
+                    Blue: low error / high confidence. Orange: high error.
+                </div>
             </div>
         );
     }
@@ -559,6 +602,12 @@ export default class StructureViewerPanel extends React.Component<
                                 >
                                     atom type
                                 </option>
+                                {this.structureSource ===
+                                    StructureSource.ALPHAFOLD && (
+                                    <option value={ProteinColor.PLDDT}>
+                                        pLDDT
+                                    </option>
+                                )}
                             </FormControl>
                         </div>
                     </div>
@@ -594,12 +643,12 @@ export default class StructureViewerPanel extends React.Component<
                     )}
                     {this.structureSource === StructureSource.ALPHAFOLD && (
                         <Checkbox
-                            checked={this.colorByPlddtEnabled}
-                            onChange={this.handlePlddtColorChange}
+                            checked={this.displayPaeHeatmap}
+                            onChange={this.handlePaeHeatmapChange}
                         >
-                            Display pLDDT coloring{' '}
-                            {this.defaultInfoTooltip(
-                                this.plddtTooltipContent()
+                            Display PAE heatmap{' '}
+                            {this.defaultInfoTooltip(() =>
+                                this.paeTooltipContent()
                             )}
                         </Checkbox>
                     )}
@@ -751,6 +800,78 @@ export default class StructureViewerPanel extends React.Component<
         );
     }
 
+    public paeHeatmapOverlay() {
+        if (
+            this.structureSource !== StructureSource.ALPHAFOLD ||
+            !this.displayPaeHeatmap
+        ) {
+            return null;
+        }
+
+        if (this.paeLoadStatus === 'loading') {
+            return (
+                <div
+                    className={classnames(
+                        styles['pae-heatmap-overlay'],
+                        'structure-viewer-no-drag'
+                    )}
+                >
+                    <ThreeBounce
+                        size={16}
+                        style={{ display: 'inline-block' }}
+                    />
+                    <span style={{ marginLeft: 6, fontSize: 12 }}>
+                        Loading PAE…
+                    </span>
+                </div>
+            );
+        }
+
+        if (!this.paeData) {
+            return null;
+        }
+
+        return (
+            <div
+                className={classnames(
+                    styles['pae-heatmap-overlay'],
+                    'structure-viewer-no-drag'
+                )}
+            >
+                <div className={styles['pae-heatmap-overlay-header']}>
+                    <span>PAE</span>
+                </div>
+                <div className={styles['pae-heatmap-body']}>
+                    <AlphaFoldPaeHeatmap
+                        matrix={this.paeData.matrix}
+                        maxPae={this.paeData.maxPae}
+                        highlight={this.paeHighlight}
+                        onCellClick={this.handlePaeCellClick}
+                    />
+                </div>
+                {this.paeCellSummary && (
+                    <div className={styles['pae-heatmap-summary']}>
+                        {this.paeCellSummaryContent(this.paeCellSummary)}
+                    </div>
+                )}
+            </div>
+        );
+    }
+
+    public paeCellSummaryContent(summary: PaeCellSummary) {
+        return (
+            <>
+                <span className={styles['pae-heatmap-summary-index']}>
+                    ({summary.i}, {summary.j})
+                </span>
+                {' · '}
+                <span className={styles['pae-heatmap-summary-value']}>
+                    {summary.paeValue.toFixed(1)} Å PAE
+                </span>
+            </>
+        );
+    }
+
     public mainContent() {
         if (this.isStructureViewerReady) {
             return (
@@ -787,7 +908,7 @@ export default class StructureViewerPanel extends React.Component<
                                     this.displayBoundMolecules
                                 }
                                 proteinScheme={this.proteinScheme}
-                                proteinColor={this.effectiveProteinColor}
+                                proteinColor={this.proteinColor}
                                 sideChain={this.sideChain}
                                 mutationColor={this.mutationColor}
                                 mutationLabels={this.mutationLabels}
@@ -795,6 +916,7 @@ export default class StructureViewerPanel extends React.Component<
                                     this.handleMutationLabelClick
                                 }
                                 pinnedResidue={this.pinnedResidue}
+                                paeResiduePair={this.paeResiduePairHighlight}
                                 onResidueClick={this.handleResidueClick}
                                 pdbId={this.viewerPdbId || ''}
                                 uniprotId={this.props.uniprotId}
@@ -811,6 +933,7 @@ export default class StructureViewerPanel extends React.Component<
                                 containerRef={this.containerRefHandler}
                             />
                             {this.structureViewerStatusOverlay()}
+                            {this.paeHeatmapOverlay()}
                             <MutationLabelDetailPanel
                                 label={this.selectedMutationLabel}
                                 onClose={this.handleMutationLabelDetailClose}
@@ -1088,8 +1211,21 @@ export default class StructureViewerPanel extends React.Component<
         this.displayBoundMolecules = !this.displayBoundMolecules;
     }
 
-    private handlePlddtColorChange(evt: React.FormEvent<HTMLInputElement>) {
-        this.displayPlddtColoring = (evt.target as HTMLInputElement).checked;
+    private handlePaeHeatmapChange(evt: React.FormEvent<HTMLInputElement>) {
+        this.displayPaeHeatmap = (evt.target as HTMLInputElement).checked;
+    }
+
+    @action
+    private handlePaeCellClick(row: number, col: number) {
+        if (
+            this.paeFocusCell?.row === row &&
+            this.paeFocusCell?.col === col
+        ) {
+            this.paeFocusCell = null;
+            return;
+        }
+
+        this.paeFocusCell = { row, col };
     }
 
     private handleStructureSourceChange(evt: React.FormEvent<HTMLSelectElement>) {
@@ -1101,11 +1237,17 @@ export default class StructureViewerPanel extends React.Component<
         this.structureLoadError = null;
         this.selectedMutationLabel = null;
         this.pinnedResidue = null;
+        this.paeFocusCell = null;
 
         if (this.structureSource === StructureSource.PDB) {
-            this.displayPlddtColoring = false;
+            if (this.proteinColor === ProteinColor.PLDDT) {
+                this.proteinColor = ProteinColor.UNIFORM;
+            }
+            this.plddtByResidue = {};
+            this.paeData = null;
+            this.paeLoadStatus = 'idle';
         } else {
-            this.loadPlddtScores();
+            this.loadAlphaFoldConfidenceData();
         }
 
         this.scheduleDragBoundsRefresh();
@@ -1120,7 +1262,8 @@ export default class StructureViewerPanel extends React.Component<
         this.structureLoadError = null;
         this.selectedMutationLabel = null;
         this.pinnedResidue = null;
-        this.loadPlddtScores();
+        this.paeFocusCell = null;
+        this.loadAlphaFoldConfidenceData();
         this.scheduleDragBoundsRefresh();
     }
 
@@ -1159,21 +1302,25 @@ export default class StructureViewerPanel extends React.Component<
         }
 
         if (this.structureSource === StructureSource.ALPHAFOLD) {
-            await this.loadPlddtScores();
+            await this.loadAlphaFoldConfidenceData();
         }
 
         this.scheduleDragBoundsRefresh();
     }
 
     @action
-    private async loadPlddtScores() {
+    private async loadAlphaFoldConfidenceData() {
         if (
             !this.props.uniprotId ||
             this.structureSource !== StructureSource.ALPHAFOLD
         ) {
             this.plddtByResidue = {};
+            this.paeData = null;
+            this.paeLoadStatus = 'idle';
             return;
         }
+
+        this.paeLoadStatus = 'loading';
 
         try {
             const metadata = await fetchAlphaFoldPredictionMetadataCached(
@@ -1182,16 +1329,35 @@ export default class StructureViewerPanel extends React.Component<
                 this.alphafoldIsoform
             );
 
-            if (!metadata?.plddtDocUrl) {
+            if (!metadata) {
                 this.plddtByResidue = {};
+                this.paeData = null;
+                this.paeLoadStatus = 'error';
                 return;
             }
 
-            this.plddtByResidue = await fetchAlphaFoldPlddtByResidue(
-                metadata.plddtDocUrl
-            );
+            if (metadata.plddtDocUrl) {
+                this.plddtByResidue = await fetchAlphaFoldPlddtByResidue(
+                    metadata.plddtDocUrl
+                );
+            } else {
+                this.plddtByResidue = {};
+            }
+
+            if (metadata.paeDocUrl) {
+                this.paeData = await fetchAlphaFoldPaeData(
+                    metadata.paeDocUrl,
+                    this.props.alphafoldFilesBaseUrl
+                );
+                this.paeLoadStatus = 'complete';
+            } else {
+                this.paeData = null;
+                this.paeLoadStatus = 'error';
+            }
         } catch (error) {
             this.plddtByResidue = {};
+            this.paeData = null;
+            this.paeLoadStatus = 'error';
         }
     }
 
@@ -1704,7 +1870,7 @@ export default class StructureViewerPanel extends React.Component<
                 this.structureSource === StructureSource.PDB &&
                 this.displayBoundMolecules,
             proteinScheme: this.proteinScheme,
-            proteinColor: this.effectiveProteinColor,
+            proteinColor: this.proteinColor,
             sideChain: this.sideChain,
             mutationColor: this.mutationColor,
             alphafoldIsoform: this.alphafoldIsoform,
@@ -1736,18 +1902,85 @@ export default class StructureViewerPanel extends React.Component<
         return this.proteinScheme !== ProteinScheme.SPACE_FILLING;
     }
 
-    @computed get effectiveProteinColor(): ProteinColor {
-        if (
-            this.structureSource === StructureSource.ALPHAFOLD &&
-            this.displayPlddtColoring
-        ) {
-            return ProteinColor.PLDDT;
+    @computed get paeHighlight(): PaeHeatmapHighlight {
+        const empty: PaeHeatmapHighlight = { rows: [], cols: [] };
+
+        if (this.structureSource !== StructureSource.ALPHAFOLD) {
+            return empty;
         }
 
-        return this.proteinColor;
+        const rows = new Set<number>();
+        const cols = new Set<number>();
+
+        if (this.props.mutationDataStore) {
+            Object.keys(this.mutationsByPosition).forEach(positionKey => {
+                const position = parseInt(positionKey, 10);
+
+                if (
+                    this.props.mutationDataStore!.isPositionSelected(
+                        position
+                    ) ||
+                    this.props.mutationDataStore!.isPositionHighlighted(
+                        position
+                    )
+                ) {
+                    const structurePosition =
+                        this.mapProteinToStructurePosition(position);
+
+                    if (structurePosition != null) {
+                        rows.add(structurePosition);
+                        cols.add(structurePosition);
+                    }
+                }
+            });
+        }
+
+        if (this.paeFocusCell) {
+            rows.add(this.paeFocusCell.row);
+            cols.add(this.paeFocusCell.col);
+
+            return {
+                rows: Array.from(rows).sort((a, b) => a - b),
+                cols: Array.from(cols).sort((a, b) => a - b),
+                focusCell: this.paeFocusCell,
+            };
+        }
+
+        if (this.pinnedResidue?.resi) {
+            rows.add(this.pinnedResidue.resi);
+            cols.add(this.pinnedResidue.resi);
+        }
+
+        return {
+            rows: Array.from(rows).sort((a, b) => a - b),
+            cols: Array.from(cols).sort((a, b) => a - b),
+        };
     }
 
-    @computed get colorByPlddtEnabled() {
-        return this.displayPlddtColoring;
+    @computed get paeResiduePairHighlight(): IPaeResiduePairHighlight | null {
+        if (
+            this.structureSource !== StructureSource.ALPHAFOLD ||
+            !this.paeFocusCell
+        ) {
+            return null;
+        }
+
+        return {
+            chain: this.viewerChainId || ALPHAFOLD_DEFAULT_CHAIN,
+            alignedResi: this.paeFocusCell.row,
+            partnerResi: this.paeFocusCell.col,
+        };
+    }
+
+    @computed get paeCellSummary(): PaeCellSummary | null {
+        if (!this.paeData || !this.paeFocusCell) {
+            return null;
+        }
+
+        return getPaeCellSummary(
+            this.paeData.matrix,
+            this.paeFocusCell.row,
+            this.paeFocusCell.col
+        );
     }
 }
