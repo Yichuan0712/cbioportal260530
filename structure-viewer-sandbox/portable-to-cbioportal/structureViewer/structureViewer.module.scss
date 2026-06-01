@@ -2,7 +2,7 @@
     width: 480px;
     position: absolute;
     float: right;
-    overflow: visible;
+    overflow: hidden;
     right: 0;
     top: 0;
     z-index: 100;
@@ -39,7 +39,13 @@
 
 .increased-size-panel {
     width: auto;
-    overflow: visible;
+    overflow: hidden;
+}
+
+.panel-header-divider {
+    margin-top: 5px !important;
+    margin-bottom: 5px !important;
+    border-top-color: #bbbbbb;
 }
 
 .main-3d-panel canvas {

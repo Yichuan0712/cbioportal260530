@@ -904,7 +904,9 @@ export default class StructureViewerPanel extends React.Component<
                     >
                         <div className="structure-viewer-header row">
                             {this.header()}
-                            <hr style={{ borderTopColor: '#BBBBBB' }} />
+                            <hr
+                                className={styles['panel-header-divider']}
+                            />
                         </div>
                         <div
                             className={classnames(styles['body'], {
