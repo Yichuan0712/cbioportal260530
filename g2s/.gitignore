@@ -50,6 +50,7 @@ workdir/
 tmp/
 g2s_pdb/
 pdbRepo/
+latest-alignment-inputs/
 
 # --- Database dumps & imports ---
 mysqldump_*.sql
