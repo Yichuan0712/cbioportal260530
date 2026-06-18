@@ -1,2 +1,3 @@
 # Monorepo root — subprojects have their own .gitignore files
 # (cbioportal/, cbioportal-frontend/, g2s/)
+tools/
