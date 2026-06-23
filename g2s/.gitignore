@@ -39,6 +39,8 @@ bin/
 Thumbs.db
 Desktop.ini
 ehthumbs.db
+__pycache__/
+*.pyc
 
 # --- Docker / local databases (large, machine-specific) ---
 mysql_data/
@@ -51,6 +53,7 @@ tmp/
 g2s_pdb/
 pdbRepo/
 latest-alignment-inputs/
+diamond-inputs/
 
 # --- Database dumps & imports ---
 mysqldump_*.sql
@@ -69,7 +72,7 @@ tools/
 # --- Local config overrides (machine-specific paths; copy from *.example) ---
 **/application-local.properties
 docker-compose.override.yml
-scripts/env.local.ps1
+yichuan_scripts/env.local.ps1
 
 # --- Path A docs are tracked; only personal notes here ---
 SETUP-PATH.local.md

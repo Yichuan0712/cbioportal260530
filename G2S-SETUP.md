@@ -4,7 +4,7 @@ How to set up everything needed to **build** the G2S project. Once this is done,
 `START-SERVICES.md` for how to run the services.
 
 > All commands run from the **g2s project root** — the folder that contains `pom.xml` and
-> the `scripts\` directory. `cd` into that folder first. All paths below are relative to it.
+> the `yichuan_scripts\` directory. `cd` into that folder first. All paths below are relative to it.
 
 ---
 
@@ -31,7 +31,7 @@ winget install Amazon.Corretto.8.JDK
 ```
 
 This installs to something like `C:\Program Files\Amazon Corretto\jdk1.8.0_xxx`.
-`scripts\env.ps1` looks for it automatically (see section 4).
+`yichuan_scripts\env.ps1` looks for it automatically (see section 4).
 
 > Java 1.8 is mandatory — the project does **not** build on Java 11+.
 
@@ -39,7 +39,7 @@ This installs to something like `C:\Program Files\Amazon Corretto\jdk1.8.0_xxx`.
 
 ## 2. Maven 3.9.x
 
-`scripts\env.ps1` automatically adds Maven to PATH **if** it finds it at
+`yichuan_scripts\env.ps1` automatically adds Maven to PATH **if** it finds it at
 `g2s\tools\apache-maven-3.9.6`. The simplest setup is to put it exactly there:
 
 ```powershell
@@ -71,12 +71,12 @@ install MySQL/MongoDB manually.
 
 ---
 
-## 4. Load the environment (`scripts\env.ps1`)
+## 4. Load the environment (`yichuan_scripts\env.ps1`)
 
 Run this **once per new PowerShell window** before building or running:
 
 ```powershell
-. .\scripts\env.ps1
+. .\yichuan_scripts\env.ps1
 ```
 
 It does three things:
@@ -134,7 +134,7 @@ $ks = "pdb-alignment-web\src\main\resources\keystore.p12"
 run the services.
 
 ```powershell
-. .\scripts\env.ps1
+. .\yichuan_scripts\env.ps1
 mvn clean package -DskipTests
 ```
 

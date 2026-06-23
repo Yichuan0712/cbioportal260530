@@ -1,7 +1,7 @@
 # Start Web UI only (5443 HTTPS)
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
-. (Join-Path $Root "scripts\env.ps1")
+. (Join-Path $Root "yichuan_scripts\env.ps1")
 Set-Location $Root
 
 $jar = Join-Path $Root "pdb-alignment-web\target\pdb-alignment-web-0.1.0.jar"

@@ -3,7 +3,7 @@
 How to start the G2S databases and services. This assumes the environment is already set up
 and the project is already built — if not, do `G2S-SETUP.md` first.
 
-> All commands run from the **g2s project root** (the folder with `pom.xml` and `scripts\`).
+> All commands run from the **g2s project root** (the folder with `pom.xml` and `yichuan_scripts\`).
 > `cd` into that folder first. All paths below are relative to it.
 
 **Prerequisites (from `G2S-SETUP.md`):** Java 1.8, Maven, Docker Desktop running, and the
@@ -24,7 +24,7 @@ Services overview:
 ## Step 0 — Load the environment (every new PowerShell window)
 
 ```powershell
-. .\scripts\env.ps1
+. .\yichuan_scripts\env.ps1
 ```
 
 > Make sure **Docker Desktop** is running first.
@@ -52,7 +52,7 @@ The database needs data, or API queries return empty. If the `pdb` database is e
 import the dump (`mysqldump_pdb_2025_08_07.sql.gz` must be in the `g2s\` root):
 
 ```powershell
-.\scripts\import-db.ps1
+.\yichuan_scripts\import-db.ps1
 ```
 
 Check whether data already exists (skip the import if the count is large):
@@ -73,10 +73,10 @@ docker exec pdb-mariadb mysql -u cbio -pcbio pdb -e "SELECT COUNT(*) FROM pdb_se
 Opens 3 separate windows for 8081 / 8082 / 5443:
 
 ```powershell
-.\scripts\start-services.ps1
+.\yichuan_scripts\start-services.ps1
 ```
 
-### Option B: start each manually (one terminal each; run `. .\scripts\env.ps1` first)
+### Option B: start each manually (one terminal each; run `. .\yichuan_scripts\env.ps1` first)
 
 **8081 — G2S alignment API**
 
@@ -99,7 +99,7 @@ java -Xmx4096m -jar pdb-alignment-web\target\pdb-alignment-web-0.1.0.jar
 Start only the Web service (auto-builds the web module if the jar is missing):
 
 ```powershell
-.\scripts\start-web.ps1
+.\yichuan_scripts\start-web.ps1
 ```
 
 ---
@@ -118,9 +118,9 @@ Start only the Web service (auto-builds the web module if the jar is missing):
 ## Daily minimal steps (already built, data already imported)
 
 ```powershell
-. .\scripts\env.ps1
+. .\yichuan_scripts\env.ps1
 docker compose up -d mysql mongo
-.\scripts\start-services.ps1
+.\yichuan_scripts\start-services.ps1
 ```
 
 > If you only need the G2S API, keep the **8081** window and close 8082 / 5443.
@@ -143,7 +143,7 @@ Close the service windows (or Ctrl+C in each) to stop the Java services.
 | Symptom | Cause / Fix |
 |---------|-------------|
 | `Unable to access jarfile ...` | (1) Not inside the `g2s` folder (`cd` there first); (2) not built — see `G2S-SETUP.md` |
-| `mvn` / `java` not recognized | Run `. .\scripts\env.ps1` in this window; if still missing, redo `G2S-SETUP.md` |
+| `mvn` / `java` not recognized | Run `. .\yichuan_scripts\env.ps1` in this window; if still missing, redo `G2S-SETUP.md` |
 | `env.ps1` shows red `NativeCommandError` | Normal — `java -version` writes to stderr. Environment is fine. |
 | `Container pdb-mariadb is not running` | `docker compose up -d mysql mongo`; make sure Docker Desktop is open |
 | API returns empty results | Database has no data — import it (see Step 1, first-time only) |

@@ -35,9 +35,9 @@ for ($i = 0; $i -lt 60; $i++) {
     Start-Sleep -Seconds 2
 }
 if (-not $ready) {
-    Write-Warning "MySQL may not be ready yet. Run scripts/import-db.ps1 after a minute."
+    Write-Warning "MySQL may not be ready yet. Run yichuan_scripts/import-db.ps1 after a minute."
 } else {
     Write-Host "MySQL is ready."
 }
 
-Write-Host "Done. Next: .\scripts\import-db.ps1"
+Write-Host "Done. Next: .\yichuan_scripts\import-db.ps1"

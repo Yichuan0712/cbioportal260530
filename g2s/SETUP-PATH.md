@@ -14,7 +14,7 @@
 
 ```powershell
 cd C:\CursorProjects\cbioportal260530\g2s
-. .\scripts\env.ps1
+. .\yichuan_scripts\env.ps1
 ```
 
 确保 **Docker Desktop 正在运行**。
@@ -22,7 +22,7 @@ cd C:\CursorProjects\cbioportal260530\g2s
 ## 1. 启动数据库
 
 ```powershell
-.\scripts\setup-path-a.ps1
+.\yichuan_scripts\setup-path-a.ps1
 ```
 
 或：
@@ -36,7 +36,7 @@ docker compose up -d mysql mongo
 dump 约 **2.3GB 压缩包**，在容器内解压导入：
 
 ```powershell
-.\scripts\import-db.ps1
+.\yichuan_scripts\import-db.ps1
 ```
 
 日志：`import-db.log`。导入完成后可检查：
@@ -48,16 +48,16 @@ docker exec pdb-mariadb mysql -u cbio -pcbio pdb -e "SHOW TABLES;"
 ## 3. 启动三个 Java 服务
 
 ```powershell
-.\scripts\start-services.ps1
+.\yichuan_scripts\start-services.ps1
 ```
 
 仅重启 Web 站（修复 Thymeleaf 后需重新 `mvn package -pl pdb-alignment-web`）：
 
 ```powershell
-.\scripts\start-web.ps1
+.\yichuan_scripts\start-web.ps1
 ```
 
-或手动（先 `. .\scripts\env.ps1`）：
+或手动（先 `. .\yichuan_scripts\env.ps1`）：
 
 ```powershell
 java -Xmx4096m -jar pdb-alignment-api\target\pdb-alignment-api-0.1.0.jar
@@ -75,7 +75,7 @@ java -Xmx4096m -jar pdb-alignment-web\target\pdb-alignment-web-0.1.0.jar
 
 ## 常见问题
 
-- **`docker` 找不到**：先开 Docker Desktop，再执行 `. .\scripts\env.ps1`
+- **`docker` 找不到**：先开 Docker Desktop，再执行 `. .\yichuan_scripts\env.ps1`
 - **拉镜像失败**：已去掉 Docker `credsStore`；若仍失败，在 Docker Desktop 登录或重试 `docker compose pull`
 - **导入很慢**：正常，请等 `import-db.ps1` 窗口完成
 - **Web 序列 BLAST**：需要 `workdir/pdb_seqres.fasta`（仅跑 API 查 Ensembl/UniProt 可不依赖）
@@ -83,4 +83,4 @@ java -Xmx4096m -jar pdb-alignment-web\target\pdb-alignment-web-0.1.0.jar
 ## 未安装（完整 Pipeline 才需要）
 
 - BLAST+、wget、rsync、Pipeline `init`
-
+

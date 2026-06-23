@@ -13,7 +13,7 @@ if (-not (Test-Path $Gz)) {
 
 $running = docker ps --filter "name=pdb-mariadb" --format "{{.Names}}" 2>$null
 if ($running -notmatch "pdb-mariadb") {
-    throw "Container pdb-mariadb is not running. Run .\scripts\setup-path-a.ps1 first."
+    throw "Container pdb-mariadb is not running. Run .\yichuan_scripts\setup-path-a.ps1 first."
 }
 
 Write-Host "Copying dump into container (2.3GB, may take several minutes)..."
