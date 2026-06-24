@@ -18,6 +18,11 @@ if (Test-Path "$mavenHome\bin\mvn.cmd") {
     $env:Path = "$mavenHome\bin;$env:Path"
 }
 
+$blastBin = Join-Path $Root "tools\ncbi-blast"
+if (Test-Path "$blastBin\blastp.exe") {
+    $env:Path = "$blastBin;$env:Path"
+}
+
 $dockerBin = "C:\Program Files\Docker\Docker\resources\bin"
 if (Test-Path $dockerBin) {
     $env:Path = "$dockerBin;$env:Path"
@@ -30,4 +35,5 @@ Write-Host "JAVA_HOME=$env:JAVA_HOME"
 $prevEAP = $ErrorActionPreference
 $ErrorActionPreference = 'Continue'
 if (Get-Command mvn -ErrorAction SilentlyContinue) { mvn -version 2>&1 | Select-Object -First 1 }
+if (Get-Command blastp -ErrorAction SilentlyContinue) { blastp -version 2>&1 | Select-Object -First 1 }
 $ErrorActionPreference = $prevEAP
