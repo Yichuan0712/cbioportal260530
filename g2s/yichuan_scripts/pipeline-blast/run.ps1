@@ -1,11 +1,11 @@
-# G2S BLAST+ pipeline — single entry point (same params as old Java init).
+# G2S BLAST+ pipeline - single entry point (same params as old Java init).
 #
-#   Setup   — prepare sequences, makeblastdb, create pdb_new, import reference IDs
-#   Chunk   — blastp (outfmt 5) + SQL import for one chunk
-#   All     — every pending chunk (resumable)
-#   Status  — manifest progress
+#   Setup   - prepare sequences, makeblastdb, create pdb_new, import reference IDs
+#   Chunk   - blastp (outfmt 5) + SQL import for one chunk
+#   All     - every pending chunk (resumable)
+#   Status  - manifest progress
 #
-# Requires NCBI BLAST+ on PATH (see README — g2s/tools/ncbi-blast).
+# Requires NCBI BLAST+ on PATH (see README - g2s/tools/ncbi-blast).
 
 param(
     [Parameter(Mandatory = $true, Position = 0)]
@@ -13,6 +13,7 @@ param(
     [string]$Action,
 
     [int]$ChunkIndex = -1,
+    [int]$MaxChunks = 0,
     [switch]$Force,
     [switch]$DropDb,
     [switch]$SkipImport
@@ -25,6 +26,7 @@ Set-Location $G2sRoot
 . (Join-Path $G2sRoot "yichuan_scripts\pipeline-blast\config.ps1")
 
 function Assert-BlastTools {
+    if ($PipelineUseDockerBlast) { return }
     foreach ($cmd in @("makeblastdb", "blastp")) {
         if (-not (Get-Command $cmd -ErrorAction SilentlyContinue)) {
             throw @"
@@ -48,7 +50,7 @@ function Assert-DockerMysql {
 
 function Get-Manifest {
     if (-not (Test-Path $PipelineManifest)) {
-        throw "Missing manifest at $PipelineManifest — run: run.ps1 Setup"
+        throw "Missing manifest at $PipelineManifest - run: run.ps1 Setup"
     }
     return Get-Content $PipelineManifest -Raw | ConvertFrom-Json
 }
@@ -64,15 +66,63 @@ function Test-ChunkAligned([string]$Status) {
 function Get-ChunkXml($chunk) {
     if ($chunk.xml) { return $chunk.xml }
     if ($chunk.PSObject.Properties.Name -contains "xml") { return $chunk.xml }
-    throw "Manifest chunk missing 'xml' path — re-run Setup with pipeline-blast"
+    throw "Manifest chunk missing 'xml' path - re-run Setup with pipeline-blast"
+}
+
+function Invoke-PreparePdb {
+    if (-not (Test-Path $PipelinePdbRepo)) {
+        throw @"
+Missing PDB repo directory: $PipelinePdbRepo
+
+Download PDB structures into g2s_pdb/ first (rsync or mirror of RCSB divided/pdb).
+"@
+    }
+
+    $pdbFiles = @(Get-ChildItem -Path $PipelinePdbRepo -Recurse -File -ErrorAction SilentlyContinue)
+    if ($pdbFiles.Count -eq 0) {
+        throw @"
+g2s_pdb/ is empty: $PipelinePdbRepo
+
+Download PDB .pdb.gz structure files before running Setup.
+"@
+    }
+
+    New-Item -ItemType Directory -Path $PipelineWorkspace, (Join-Path $G2sRoot "tmp") -Force | Out-Null
+
+    $execArgLine = "--pdb-repo `"$PipelinePdbRepo`" --workspace `"$PipelineWorkspace`" --g2s-root `"$G2sRoot`""
+    if ($MaxPdbFiles -gt 0) {
+        $execArgLine += " --max-files $MaxPdbFiles"
+    }
+
+    if ((Test-Path $PipelinePdbSeqresFasta) -and -not $Force) {
+        $existing = Get-Item $PipelinePdbSeqresFasta
+        if ($existing.Length -gt 50MB) {
+            Write-Host "[prepare-pdb] Skip - existing FASTA ($([math]::Round($existing.Length/1GB,2)) GB): $PipelinePdbSeqresFasta"
+            return
+        }
+    }
+
+    Write-Host "[prepare-pdb] Step 1+2 (yichuan pdb-prepare): $($pdbFiles.Count) file(s) -> pdb_seqres.fasta ..."
+    $prevEAP = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    & mvn -f $PipelinePdbPreparePom -q compile exec:java "-Dexec.args=$execArgLine" 2>&1 | ForEach-Object { Write-Host $_ }
+    $ErrorActionPreference = $prevEAP
+    if ($LASTEXITCODE -ne 0) { throw "PdbPrepareMain failed (exit $LASTEXITCODE)" }
+
+    if (-not (Test-Path $PipelinePdbSeqresFasta)) {
+        throw "Missing $PipelinePdbSeqresFasta after Java PDB prepare"
+    }
+    Write-Host "[prepare-pdb] OK: $PipelinePdbSeqresFasta"
 }
 
 function Invoke-Prepare {
-    foreach ($gz in @($PipelinePdbSeqresGz, $PipelineEnsemblGz, $PipelineSwissprotGz, $PipelineIsoformGz)) {
+    foreach ($gz in @($PipelineEnsemblGz, $PipelineSwissprotGz, $PipelineIsoformGz)) {
         if (-not (Test-Path $gz)) { throw "Missing input: $gz" }
     }
 
     New-Item -ItemType Directory -Path $PipelineWorkspace, $PipelineStateDir, $PipelineResultsDir -Force | Out-Null
+
+    Invoke-PreparePdb
 
     $pyArgs = @(
         (Join-Path $PipelineRoot "prepare_inputs.py"),
@@ -93,11 +143,15 @@ function Invoke-Prepare {
 function Invoke-Makedb {
     Assert-BlastTools
     if (-not (Test-Path $PipelinePdbSeqresFasta)) {
-        throw "Missing $PipelinePdbSeqresFasta — run Setup first"
+        throw "Missing $PipelinePdbSeqresFasta - run Setup first"
     }
     $pinFile = "$PipelinePdbBlastDb.pin"
-    if ((Test-Path $pinFile) -and -not $Force) {
-        Write-Host "[makedb] BLAST DB exists — skip (use -Force to rebuild)"
+    $fastaNewer = $false
+    if ((Test-Path $pinFile) -and (Test-Path $PipelinePdbSeqresFasta)) {
+        $fastaNewer = (Get-Item $PipelinePdbSeqresFasta).LastWriteTime -gt (Get-Item $pinFile).LastWriteTime
+    }
+    if ((Test-Path $pinFile) -and -not $Force -and -not $fastaNewer) {
+        Write-Host "[makedb] BLAST DB exists - skip (use -Force to rebuild)"
         return
     }
     Write-Host "[makedb] makeblastdb on pdb_seqres.fasta ..."
@@ -113,42 +167,68 @@ function Invoke-InitDb {
 
     if ($DropDb) {
         Write-Host "[init-db] Dropping database $PipelineDbName ..."
-        docker exec $PipelineDbContainer mysql -u $PipelineDbUser -p$PipelineDbPass -e "DROP DATABASE IF EXISTS ``$PipelineDbName``;"
+        docker exec -e "MYSQL_PWD=$PipelineDbRootPass" $PipelineDbContainer mysql -u root -e "DROP DATABASE IF EXISTS ``$PipelineDbName``;"
+        if ($LASTEXITCODE -ne 0) { throw "Drop database failed" }
     }
 
     Write-Host "[init-db] Creating schema on $PipelineDbName ..."
-    docker exec $PipelineDbContainer mysql -u $PipelineDbUser -p$PipelineDbPass -e "CREATE DATABASE IF NOT EXISTS ``$PipelineDbName`` CHARACTER SET utf8 COLLATE utf8_general_ci;"
-    Get-Content $PipelineSqlSchema -Raw | docker exec -i $PipelineDbContainer mysql -u $PipelineDbUser -p$PipelineDbPass $PipelineDbName
+    $createSql = @"
+CREATE DATABASE IF NOT EXISTS ``$PipelineDbName`` CHARACTER SET utf8 COLLATE utf8_general_ci;
+GRANT ALL PRIVILEGES ON ``$PipelineDbName``.* TO '$PipelineDbUser'@'%';
+FLUSH PRIVILEGES;
+"@
+    $createSql | docker exec -i -e "MYSQL_PWD=$PipelineDbRootPass" $PipelineDbContainer mysql -u root
+    if ($LASTEXITCODE -ne 0) { throw "Create database failed" }
+
+    Get-Content $PipelineSqlSchema -Raw | docker exec -i -e "MYSQL_PWD=$PipelineDbPass" $PipelineDbContainer mysql -u $PipelineDbUser $PipelineDbName
     if ($LASTEXITCODE -ne 0) { throw "Schema import failed" }
 }
 
 function Invoke-ImportReference {
     if (-not (Test-Path $PipelineInsertSeqSql)) {
-        throw "Missing $PipelineInsertSeqSql — run Setup first"
+        throw "Missing $PipelineInsertSeqSql - run Setup first"
     }
     Assert-DockerMysql
 
     if (-not $Force) {
-        $count = docker exec $PipelineDbContainer mysql -N -u $PipelineDbUser -p$PipelineDbPass $PipelineDbName -e "SELECT COUNT(*) FROM seq_entry;" 2>$null
+        $count = docker exec -e "MYSQL_PWD=$PipelineDbPass" $PipelineDbContainer mysql -N -u $PipelineDbUser $PipelineDbName -e "SELECT COUNT(*) FROM seq_entry;" 2>$null
         if ($count -and [int]$count -gt 0) {
-            Write-Host "[import-ref] seq_entry already has $count rows — skip (use -Force)"
+            Write-Host "[import-ref] seq_entry already has $count rows - skip (use -Force)"
             return
         }
     }
 
     Write-Host "[import-ref] Loading reference IDs ..."
-    Get-Content $PipelineInsertSeqSql -Raw | docker exec -i $PipelineDbContainer mysql -u $PipelineDbUser -p$PipelineDbPass $PipelineDbName
+    Get-Content $PipelineInsertSeqSql -Raw | docker exec -i -e "MYSQL_PWD=$PipelineDbPass" $PipelineDbContainer mysql -u $PipelineDbUser $PipelineDbName
     if ($LASTEXITCODE -ne 0) { throw "Reference import failed" }
+}
+
+function Get-DockerPath([string]$WinPath) {
+    $resolved = [System.IO.Path]::GetFullPath($WinPath) -replace '\\', '/'
+    if ($resolved -match '^([A-Za-z]):(.*)$') {
+        return "/$($Matches[1].ToLower())$($Matches[2])"
+    }
+    return $resolved
+}
+
+function Get-WorkdirDockerPath([string]$Path) {
+    $full = [System.IO.Path]::GetFullPath($Path)
+    $work = [System.IO.Path]::GetFullPath($PipelineWorkspace)
+    if (-not $full.StartsWith($work, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Path not under workdir: $Path"
+    }
+    $rel = $full.Substring($work.Length).TrimStart('\').Replace('\', '/')
+    return "/workdir/$rel"
 }
 
 function Invoke-BlastChunk {
     param([int]$Index, [switch]$ForceAlign)
 
-    Assert-BlastTools
+    if (-not $PipelineUseDockerBlast) { Assert-BlastTools }
     $manifest = Get-Manifest
     $pinFile = "$PipelinePdbBlastDb.pin"
     if (-not (Test-Path $pinFile)) {
-        throw "Missing BLAST DB — run Setup first"
+        throw "Missing BLAST DB - run Setup first"
     }
 
     $chunk = $manifest.chunks | Where-Object { $_.index -eq $Index } | Select-Object -First 1
@@ -160,29 +240,47 @@ function Invoke-BlastChunk {
         throw "Missing query chunk: $($chunk.query_fasta)"
     }
     if ((Test-ChunkAligned $chunk.status) -and (Test-Path $xmlOut) -and -not $ForceAlign) {
-        Write-Host "[blast] Chunk $Index already aligned — skip (use -Force)"
+        Write-Host "[blast] Chunk $Index already aligned - skip (use -Force)"
         return
     }
 
     Write-Host "[blast] blastp chunk $Index (outfmt 5 XML) ..."
     Write-Host "  query: $($chunk.query_fasta)"
     Write-Host "  xml:   $xmlOut"
-    & blastp `
-        -db $PipelinePdbBlastDb `
-        -query $chunk.query_fasta `
-        -word_size $PipelineBlastWordSize `
-        -evalue $PipelineBlastEvalue `
-        -max_target_seqs $PipelineBlastMaxTargets `
-        -num_threads $PipelineBlastThreads `
-        -outfmt 5 `
-        -out $xmlOut
+
+    if ($PipelineUseDockerBlast) {
+        $mountRoot = Get-DockerPath $PipelineWorkspace
+        $dbIn = Get-WorkdirDockerPath $PipelinePdbBlastDb
+        $queryIn = Get-WorkdirDockerPath $chunk.query_fasta
+        $xmlIn = Get-WorkdirDockerPath $xmlOut
+        Write-Host "  via docker: $PipelineBlastDockerImage"
+        docker run --rm -v "${mountRoot}:/workdir" $PipelineBlastDockerImage blastp `
+            -db $dbIn `
+            -query $queryIn `
+            -word_size $PipelineBlastWordSize `
+            -evalue $PipelineBlastEvalue `
+            -max_target_seqs $PipelineBlastMaxTargets `
+            -num_threads $PipelineBlastThreads `
+            -outfmt 5 `
+            -out $xmlIn
+    } else {
+        & blastp `
+            -db $PipelinePdbBlastDb `
+            -query $chunk.query_fasta `
+            -word_size $PipelineBlastWordSize `
+            -evalue $PipelineBlastEvalue `
+            -max_target_seqs $PipelineBlastMaxTargets `
+            -num_threads $PipelineBlastThreads `
+            -outfmt 5 `
+            -out $xmlOut
+    }
     if ($LASTEXITCODE -ne 0) { throw "blastp failed for chunk $Index" }
 
     $raw = Get-Manifest
     foreach ($c in $raw.chunks) {
         if ($c.index -eq $Index) {
             $c.status = "align_done"
-            $c.align_finished = (Get-Date).ToString("o")
+            $c | Add-Member -NotePropertyName align_finished -NotePropertyValue (Get-Date).ToString("o") -Force
         }
     }
     Save-Manifest $raw
@@ -190,13 +288,17 @@ function Invoke-BlastChunk {
 }
 
 function Invoke-ImportChunk {
-    param([int]$Index, [switch]$SkipDbImport)
+    param([int]$Index, [switch]$SkipDbImport, [switch]$Force)
 
     $manifest = Get-Manifest
     $chunk = $manifest.chunks | Where-Object { $_.index -eq $Index } | Select-Object -First 1
     if (-not $chunk) { throw "Unknown chunk $Index" }
+    if ($chunk.status -eq "import_done" -and -not $Force) {
+        Write-Host "[import] Chunk $Index already import_done - skip (use -Force to re-import)"
+        return
+    }
     if (-not (Test-ChunkAligned $chunk.status) -and $chunk.status -ne "import_done") {
-        throw "Chunk $Index status is '$($chunk.status)' — run blast first"
+        throw "Chunk $Index status is '$($chunk.status)' - run blast first"
     }
 
     $xmlPath = Get-ChunkXml $chunk
@@ -210,20 +312,20 @@ function Invoke-ImportChunk {
     if ($LASTEXITCODE -ne 0) { throw "blast_to_sql.py failed for chunk $Index" }
 
     if ($SkipDbImport) {
-        Write-Host "[import] SkipImport — SQL only: $($chunk.sql)"
+        Write-Host "[import] SkipImport - SQL only: $($chunk.sql)"
         return
     }
 
     Assert-DockerMysql
     Write-Host "[import] Loading SQL into $PipelineDbName ..."
-    Get-Content $chunk.sql -Raw | docker exec -i $PipelineDbContainer mysql -u $PipelineDbUser -p$PipelineDbPass $PipelineDbName
+    Get-Content $chunk.sql -Raw | docker exec -i -e "MYSQL_PWD=$PipelineDbPass" $PipelineDbContainer mysql -u $PipelineDbUser $PipelineDbName
     if ($LASTEXITCODE -ne 0) { throw "MySQL import failed for chunk $Index" }
 
     $raw = Get-Manifest
     foreach ($c in $raw.chunks) {
         if ($c.index -eq $Index) {
             $c.status = "import_done"
-            $c.import_finished = (Get-Date).ToString("o")
+            $c | Add-Member -NotePropertyName import_finished -NotePropertyValue (Get-Date).ToString("o") -Force
         }
     }
     Save-Manifest $raw
@@ -232,7 +334,7 @@ function Invoke-ImportChunk {
 
 function Invoke-Status {
     if (-not (Test-Path $PipelineManifest)) {
-        Write-Host "No manifest — run Setup first."
+        Write-Host "No manifest - run Setup first."
         exit 1
     }
     $m = Get-Manifest
@@ -272,11 +374,15 @@ switch ($Action) {
     "Chunk" {
         if ($ChunkIndex -lt 0) { throw "Chunk requires -ChunkIndex N" }
         Invoke-BlastChunk -Index $ChunkIndex -ForceAlign:$Force
-        Invoke-ImportChunk -Index $ChunkIndex -SkipDbImport:$SkipImport
+        Invoke-ImportChunk -Index $ChunkIndex -SkipDbImport:$SkipImport -Force:$Force
     }
     "All" {
         $m = Get-Manifest
-        for ($i = 0; $i -lt $m.chunk_count; $i++) {
+        $limit = if ($MaxChunks -gt 0) { [Math]::Min($MaxChunks, $m.chunk_count) } else { $m.chunk_count }
+        if ($MaxChunks -gt 0) {
+            Write-Host "Processing chunks 0 .. $($limit - 1) ($limit total, then stop)"
+        }
+        for ($i = 0; $i -lt $limit; $i++) {
             $c = $m.chunks | Where-Object { $_.index -eq $i } | Select-Object -First 1
             if (-not (Test-ChunkAligned $c.status) -and $c.status -ne "import_done") {
                 Invoke-BlastChunk -Index $i -ForceAlign:$Force
@@ -285,7 +391,7 @@ switch ($Action) {
                 $m2 = Get-Manifest
                 $c2 = $m2.chunks | Where-Object { $_.index -eq $i } | Select-Object -First 1
                 if ((Test-ChunkAligned $c2.status) -and $c2.status -ne "import_done") {
-                    Invoke-ImportChunk -Index $i
+                    Invoke-ImportChunk -Index $i -Force:$Force
                 }
             }
         }

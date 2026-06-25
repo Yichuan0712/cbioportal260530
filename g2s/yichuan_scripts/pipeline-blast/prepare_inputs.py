@@ -2,10 +2,13 @@
 """Prepare BLAST pipeline inputs from raw .gz source files.
 
 Produces:
-  - pdb_seqres.fasta   (PDB protein chains, mol:protein only)
   - geneseq.fasta.N    (deduplicated reference proteome query chunks)
-  - insert_Sequence.sql (seq_entry / ensembl_entry / uniprot_entry)
+  - insert_Sequence.sql (seq_entry with SEQUENCE + ensembl/uniprot mapping)
   - manifest.json
+
+PDB subject FASTA (pdb_seqres.fasta) must already exist from
+yichuan_scripts/pipeline-blast/pdb-prepare (g2s_pdb/ Step 1+2)
+before this script runs.
 
 Rules match G2S pdb-alignment-pipeline init preprocessing.
 
@@ -47,18 +50,46 @@ def gunzip_to(src: Path, dest: Path) -> None:
 
 
 def preprocess_pdb_seqres(in_path: Path, out_path: Path, max_lines: int = 0) -> int:
-    """Filter pdb_seqres to mol:protein entries -> FASTA for makeblastdb."""
-    out_path.parent.mkdir(parents=True, exist_ok=True)
+    """Validate segmented pdb_seqres.fasta; optionally truncate for smoke tests."""
+    if not in_path.exists():
+        raise FileNotFoundError(
+            f"{in_path} not found. Run pdb-prepare (g2s_pdb -> pdb_seqres.fasta) first."
+        )
+
     kept = 0
-    with out_path.open("w", encoding="utf-8", newline="\n") as out:
-        for header, sequence in parse_fasta(in_path):
-            if max_lines and kept >= max_lines:
-                break
-            parts = header.split()
-            if len(parts) > 1 and parts[1] == "mol:protein":
-                out.write(f">{header}\n{sequence}\n")
-                kept += 1
+    lines_out: List[str] = []
+    for header, sequence in parse_fasta(in_path):
+        parts = header.split()
+        if len(parts) < 5 or parts[1] != "mol:protein":
+            raise ValueError(
+                "Invalid segmented PDB FASTA header "
+                f"(expected pdbId_chain_seg mol:protein length:N SEG_START SEG_END): {header!r}"
+            )
+        pdb_parts = parts[0].split("_")
+        if len(pdb_parts) < 3:
+            raise ValueError(f"Invalid PDB_NO in header: {parts[0]!r}")
+
+        if max_lines and kept >= max_lines:
+            break
+        lines_out.append(f">{header}\n{sequence}\n")
+        kept += 1
+
+    if kept == 0:
+        raise ValueError(f"No mol:protein entries in {in_path}")
+
+    if max_lines and kept < count_fasta_entries(in_path):
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text("".join(lines_out), encoding="utf-8")
     return kept
+
+
+def count_fasta_entries(path: Path) -> int:
+    count = 0
+    with path.open("r", encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            if line.startswith(">"):
+                count += 1
+    return count
 
 
 def get_unique_seq_id_ensembl(header: str) -> str:
@@ -96,18 +127,33 @@ def get_uniprot_acc_map(swissprot_path: Path) -> Dict[str, str]:
 
 
 def get_unique_seq_id_uniprot(header: str, acc_map: Dict[str, str]) -> str:
-    first = header.split()[0]
-    if "|" in first:
-        accession = first.split("|")[1] if first.count("|") >= 2 else first
+    """Match Java PdbScriptsPipelinePreprocessing.getUniqueSeqIDUniprot."""
+    accession = header.split()[0]
+    if "|" in accession:
+        pipe_parts = accession.split("|")
+        if len(pipe_parts) >= 2:
+            accession = pipe_parts[1]
+
+    dash_parts = accession.split("-", 1)
+    if len(dash_parts) == 2:
+        uid, iso = dash_parts
+        return f"{uid}_{iso} {acc_map.get(uid, '')}"
+    return f"{accession}_1 {acc_map.get(accession, '')}"
+
+
+def parse_uniprot_label(label: str) -> Tuple[str, str, str, str]:
+    """Return UNIPROT_ID_ISO, UNIPROT_ID, NAME, ISOFORM (Java generateSeqSQLTmpFile)."""
+    parts = label.split()
+    if len(parts) < 2:
+        raise ValueError(f"invalid UniProt label: {label!r}")
+    iso_key = parts[0]
+    name = parts[1]
+    iso_parts = iso_key.split("_", 1)
+    if len(iso_parts) == 2:
+        uid, iso = iso_parts
     else:
-        accession = first.split("-")[0]
-    if "-" in accession:
-        uid, iso = accession.split("-", 1)
-        return f"{uid}_{iso} {acc_map.get(uid, '')}"
-    if "-" in first and "|" not in first:
-        uid, iso = first.split("-", 1)
-        return f"{uid}_{iso} {acc_map.get(uid, '')}"
-    return f"{first}_1 {acc_map.get(first, acc_map.get(accession, ''))}"
+        uid, iso = iso_key, "1"
+    return iso_key, uid, name, iso
 
 
 def merge_uniprot(in_path: Path, acc_map: Dict[str, str], out: Dict[str, str]) -> None:
@@ -126,6 +172,10 @@ def merge_ensembl(in_path: Path, out: Dict[str, str]) -> None:
             out[sequence] = out[sequence] + ";" + label
         else:
             out[sequence] = label
+
+
+def sql_escape(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("'", "''")
 
 
 def write_gene_fasta_and_sql(
@@ -148,6 +198,11 @@ def write_gene_fasta_and_sql(
         header = f">{seq_id};{labels}"
         chunk_lines.append(f"{header}\n{sequence}\n")
 
+        sql_lines.append(
+            "INSERT IGNORE INTO `seq_entry`(`SEQ_ID`,`SEQUENCE`) "
+            f"VALUES('{seq_id}', '{sql_escape(sequence)}');"
+        )
+
         for label in labels.split(";"):
             parts = label.split()
             if len(parts) == 3:
@@ -157,18 +212,14 @@ def write_gene_fasta_and_sql(
                     f"VALUES('{parts[0]}', '{parts[1]}', '{parts[2]}', '{seq_id}');"
                 )
             elif len(parts) >= 2:
-                iso_parts = parts[0].split("_")
-                if len(iso_parts) == 2:
-                    uid, iso = iso_parts
-                else:
-                    uid, iso = parts[0], "1"
-                name = parts[1].replace("'", "''")
+                iso_key, uid, name, iso = parse_uniprot_label(label)
+                name = name.replace("'", "''")
                 sql_lines.append(
                     "INSERT IGNORE INTO `uniprot_entry`"
                     f"(`UNIPROT_ID_ISO`,`UNIPROT_ID`,`NAME`,`ISOFORM`,`SEQ_ID`) "
-                    f"VALUES('{parts[0]}', '{uid}', '{name}', '{iso}', '{seq_id}');"
+                    f"VALUES('{sql_escape(iso_key)}', '{sql_escape(uid)}', "
+                    f"'{name}', '{iso}', '{seq_id}');"
                 )
-            sql_lines.append(f"INSERT IGNORE INTO `seq_entry`(`SEQ_ID`) VALUES('{seq_id}');")
 
         if idx % chunk_size == 0:
             Path(f"{fasta_base}.{chunk_count}").write_text("".join(chunk_lines), encoding="utf-8")
@@ -237,12 +288,11 @@ def main() -> int:
     parser.add_argument("--max-pdb-seqres-lines", type=int, default=0)
     args = parser.parse_args()
 
-    pdb_gz = args.inputs_dir / "pdb_seqres.txt.gz"
     ensembl_gz = args.inputs_dir / "Homo_sapiens.GRCh38.pep.all.fa.gz"
     swissprot_gz = args.inputs_dir / "uniprot_sprot.fasta.gz"
     isoform_gz = args.inputs_dir / "uniprot_sprot_varsplic.fasta.gz"
 
-    for p in (pdb_gz, ensembl_gz, swissprot_gz, isoform_gz):
+    for p in (ensembl_gz, swissprot_gz, isoform_gz):
         if not p.exists():
             raise FileNotFoundError(p)
 
@@ -250,20 +300,16 @@ def main() -> int:
     args.state_dir.mkdir(parents=True, exist_ok=True)
     args.results_dir.mkdir(parents=True, exist_ok=True)
 
-    pdb_txt = args.workspace / "pdb_seqres.txt"
     pdb_fasta = args.workspace / "pdb_seqres.fasta"
     gene_fasta = args.workspace / "geneseq.fasta"
     insert_sql = args.workspace / "insert_Sequence.sql"
     manifest = args.state_dir / "manifest.json"
 
-    print("[1/4] Gunzip pdb_seqres...")
-    gunzip_to(pdb_gz, pdb_txt)
+    print("[1/3] Validate segmented pdb_seqres.fasta (from g2s_pdb Java Step 1+2)...")
+    pdb_count = preprocess_pdb_seqres(pdb_fasta, pdb_fasta, args.max_pdb_seqres_lines)
+    print(f"      {pdb_count} segmented protein chain(s)")
 
-    print("[2/4] pdb_seqres -> pdb_seqres.fasta (mol:protein)...")
-    pdb_count = preprocess_pdb_seqres(pdb_txt, pdb_fasta, args.max_pdb_seqres_lines)
-    print(f"      kept {pdb_count} protein chains")
-
-    print("[3/4] Gunzip reference proteomes...")
+    print("[2/3] Gunzip reference proteomes...")
     ensembl_fa = args.workspace / "Homo_sapiens.GRCh38.pep.all.fa"
     swissprot_fa = args.workspace / "uniprot_sprot.fasta"
     isoform_fa = args.workspace / "uniprot_sprot_varsplic.fasta"
@@ -271,7 +317,7 @@ def main() -> int:
     gunzip_to(swissprot_gz, swissprot_fa)
     gunzip_to(isoform_gz, isoform_fa)
 
-    print("[4/4] Merge + dedupe reference sequences...")
+    print("[3/3] Merge + dedupe reference sequences...")
     acc_map = get_uniprot_acc_map(swissprot_fa)
     uniq: Dict[str, str] = {}
     merge_uniprot(swissprot_fa, acc_map, uniq)

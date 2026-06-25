@@ -1,71 +1,56 @@
 # G2S Pipeline — NCBI BLAST+
 
-Same logic as the original G2S init pipeline (`pdb-alignment-pipeline`):
+Self-contained rebuild path under `yichuan_scripts/pipeline-blast/` (target DB: **`pdb_new`**).
 
-- **prepare** → **makeblastdb** → **blastp** (outfmt 5 XML) → **SQL** → **pdb_new**
+Does **not** modify `pdb-alignment-pipeline` (production Java init / import dump path unchanged).
+
+- **pdb-prepare** (Java fork) → **prepare_inputs.py** → **makeblastdb** → **blastp** → **SQL** → **pdb_new**
+
+## PDB structures (`g2s_pdb/`)
+
+Setup requires local PDB `.pdb.gz` under `g2s/g2s_pdb/`.
+
+`run.ps1 Setup` runs `pdb-prepare/PdbPrepareMain` (BioJava segmentation fork) before gene FASTA prep.
+
+Headers: `>101m_A_1 mol:protein length:154 0 154`
 
 ## BLAST+ location
 
-Installed under `g2s/tools/ncbi-blast/` (gitignored). After:
+After:
 
 ```powershell
 cd g2s
 . .\yichuan_scripts\env.ps1
 ```
 
-`makeblastdb` and `blastp` are on PATH.
+`makeblastdb` / `blastp` on PATH, or set `$PipelineUseDockerBlast = $true` in `config.ps1`.
 
-## Scripts
+## Layout
 
-| File | Purpose |
+| Path | Purpose |
 |------|---------|
-| **`run.ps1`** | Single entry — Setup / Chunk / All / Status |
-| `config.ps1` | Paths and BLAST params (edit, do not run alone) |
-| `prepare_inputs.py` | Raw .gz → FASTA + insert_Sequence.sql |
-| `blast_to_sql.py` | BLAST XML → pdb_entry + pdb_seq_alignment SQL |
-
-## BLAST parameters (match old `application.properties`)
-
-| Param | Value |
-|-------|-------|
-| `-evalue` | `1` |
-| `-max_target_seqs` | `50` |
-| `-word_size` | `3` |
-| `-num_threads` | `6` |
-| `-outfmt` | `5` (XML) |
+| **`run.ps1`** | Setup / Chunk / All / Status |
+| `config.ps1` | Paths and BLAST params |
+| **`pdb-prepare/`** | Java Step 1+2 fork (`PdbPrepareMain`) |
+| `resources/pdb_new.sql` | Schema for `pdb_new` only |
+| `prepare_inputs.py` | Reference proteome → gene FASTA + SQL |
+| `blast_to_sql.py` | BLAST XML → alignment SQL |
 
 ## Commands
 
 ```powershell
 cd g2s
 . .\yichuan_scripts\env.ps1
-
 .\yichuan_scripts\pipeline-blast\run.ps1 Setup
 .\yichuan_scripts\pipeline-blast\run.ps1 Chunk -ChunkIndex 0
 .\yichuan_scripts\pipeline-blast\run.ps1 All
 .\yichuan_scripts\pipeline-blast\run.ps1 Status
 ```
 
-State directory: `workdir/pipeline-blast/`.
+Small test: `$MaxPdbFiles = 10`, `$MaxPdbSeqresLines = 100`, `$MaxGeneChunks = 1` in `config.ps1`.
 
-Small test: `config.ps1` → `$MaxGeneChunks = 1`.
+## Schema (`pdb_new` only)
 
-## Outputs
-
-```
-workdir/
-  pdb_seqres.fasta
-  pdb_seqres.db.{pin,phr,psq,...}
-  geneseq.fasta.N
-  insert_Sequence.sql
-  pipeline-blast/
-    manifest.json
-    results/chunk-0000.xml
-    results/chunk-0000.sql
-```
-
-After `All` completes, export one file for Docker like the old dump:
-
-```powershell
-docker exec pdb-mariadb mysqldump -u cbio -pcbio pdb_new | gzip > mysqldump_pdb_new.sql.gz
-```
+- `seq_entry.SEQUENCE` (TEXT NOT NULL)
+- Wider UniProt/Ensembl VARCHAR
+- Production `pdb` dump + `pdb-alignment-pipeline/src/main/resources/pdb.sql` unchanged

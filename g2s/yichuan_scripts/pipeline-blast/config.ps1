@@ -1,4 +1,4 @@
-# Shared config — loaded by run.ps1 (edit paths/params here).
+# Shared config - loaded by run.ps1 (edit paths/params here).
 $ErrorActionPreference = "Stop"
 
 if (-not $PipelineRoot) {
@@ -10,12 +10,14 @@ if (-not $G2sRoot) {
 
 # --- Input sources (already downloaded) ---
 $PipelineInputsDir   = Join-Path $G2sRoot "latest-alignment-inputs"
+$PipelinePdbRepo     = Join-Path $G2sRoot "g2s_pdb"
 $PipelineWorkspace  = Join-Path $G2sRoot "workdir"
 $PipelineStateDir    = Join-Path $PipelineWorkspace "pipeline-blast"
 $PipelineResultsDir  = Join-Path $PipelineStateDir "results"
 $PipelineManifest    = Join-Path $PipelineStateDir "manifest.json"
 
 $PipelinePdbSeqresGz     = Join-Path $PipelineInputsDir "pdb_seqres.txt.gz"
+$PipelinePdbPreparePom = Join-Path $PipelineRoot "pdb-prepare/pom.xml"
 $PipelineEnsemblGz       = Join-Path $PipelineInputsDir "Homo_sapiens.GRCh38.pep.all.fa.gz"
 $PipelineSwissprotGz     = Join-Path $PipelineInputsDir "uniprot_sprot.fasta.gz"
 $PipelineIsoformGz       = Join-Path $PipelineInputsDir "uniprot_sprot_varsplic.fasta.gz"
@@ -40,8 +42,14 @@ $PipelineDbHost = "localhost"
 $PipelineDbUser = "cbio"
 $PipelineDbPass = "cbio"
 $PipelineDbContainer = "pdb-mariadb"
-$PipelineSqlSchema   = Join-Path $G2sRoot "pdb-alignment-pipeline/src/main/resources/pdb.sql"
+$PipelineDbRootPass = "root"
+$PipelineSqlSchema   = Join-Path $PipelineRoot "resources/pdb_new.sql"
 
 # --- Small-scale test knobs ---
 $MaxGeneChunks = 0
 $MaxPdbSeqresLines = 0
+$MaxPdbFiles = 0
+
+# --- BLAST execution (local blastp needs VC++ redistributable on Windows) ---
+$PipelineBlastDockerImage = "ncbi/blast:2.16.0"
+$PipelineUseDockerBlast = $true

@@ -19,24 +19,28 @@ def sql_escape(value: str) -> str:
 
 
 def parse_pdb_subject(sseqid: str) -> Tuple[str, str, str, str, str]:
+    """Parse Hit_def like Java PdbScriptsPipelineMakeSQL.makeTable_pdb_entry_insert."""
     parts = sseqid.split()
     if not parts:
         raise ValueError(f"empty Hit_def: {sseqid!r}")
 
     pdb_no = parts[0]
-    segs = pdb_no.split("_")
-    if len(segs) >= 3:
-        pdb_id, chain, pdb_seg = segs[0], segs[1], segs[2]
-    elif len(segs) == 2:
-        pdb_id, chain, pdb_seg = segs[0], segs[1], "1"
-    else:
-        raise ValueError(f"cannot parse PDB_NO from {pdb_no!r} in {sseqid!r}")
+    strarray_s = pdb_no.split("_")
+    if len(strarray_s) < 3:
+        raise ValueError(
+            f"PDB header must be pdbId_chain_seg (3+ underscore parts), "
+            f"got {pdb_no!r} in {sseqid!r}"
+        )
 
-    if len(parts) > 3 and parts[3].isdigit():
-        seg_start = parts[3]
-    else:
-        seg_start = "1"
+    pdb_id, chain, pdb_seg = strarray_s[0], strarray_s[1], strarray_s[2]
+    if len(parts) <= 3:
+        raise ValueError(
+            f"PDB header missing SEG_START at token[3] "
+            f"(expected: pdbId_chain_seg mol:protein length:N SEG_START SEG_END), "
+            f"got {sseqid!r}"
+        )
 
+    seg_start = parts[3]
     return pdb_no, pdb_id, chain, pdb_seg, seg_start
 
 
@@ -51,14 +55,11 @@ def _text(parent: ET.Element, tag: str) -> str:
     return node.text.strip()
 
 
-def iter_blast_hsps(xml_path: Path) -> Iterator[dict]:
-    for _event, iteration in ET.iterparse(xml_path, events=("end",)):
-        if iteration.tag != "Iteration":
-            continue
+def _iter_hsps_from_iterations(iterations: ET.Element) -> Iterator[dict]:
+    for iteration in iterations.findall("Iteration"):
         query_def = _text(iteration, "Iteration_query-def")
         hits = iteration.find("Iteration_hits")
         if hits is None:
-            iteration.clear()
             continue
         for hit in hits.findall("Hit"):
             hit_def = _text(hit, "Hit_def")
@@ -81,7 +82,32 @@ def iter_blast_hsps(xml_path: Path) -> Iterator[dict]:
                     "sseq": _text(hsp, "Hsp_hseq"),
                     "midline": _text(hsp, "Hsp_midline"),
                 }
-        iteration.clear()
+
+
+def iter_blast_output_blocks(xml_path: Path) -> Iterator[str]:
+    """Yield each BLAST XML document in a possibly concatenated outfmt=5 file."""
+    buf: list[str] = []
+    with xml_path.open(encoding="utf-8") as handle:
+        for line in handle:
+            if line.startswith("<?xml") and buf:
+                block = "".join(buf).strip()
+                if block:
+                    yield block
+                buf = [line]
+            else:
+                buf.append(line)
+    block = "".join(buf).strip()
+    if block:
+        yield block
+
+
+def iter_blast_hsps(xml_path: Path) -> Iterator[dict]:
+    for block in iter_blast_output_blocks(xml_path):
+        root = ET.fromstring(block)
+        iterations = root.find("BlastOutput_iterations")
+        if iterations is None:
+            continue
+        yield from _iter_hsps_from_iterations(iterations)
 
 
 def make_pdb_entry_insert(
