@@ -13,4 +13,4 @@ if (-not (Test-Path $jar)) {
 Write-Host "Starting Web UI on https://localhost:5443 ..."
 Write-Host "  https://localhost:5443/"
 Write-Host "  https://localhost:5443/sequence"
-java -Xmx4096m -jar $jar
+java -Xmx4096m -jar $jar --spring.profiles.active=local

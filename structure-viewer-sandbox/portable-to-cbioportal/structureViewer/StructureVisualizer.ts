@@ -137,7 +137,7 @@ abstract class StructureVisualizer {
         pdbUri: 'https://files.rcsb.org/view/',
         alphafoldFilesBaseUrl: 'https://alphafold.ebi.ac.uk/files',
         proteinScheme: ProteinScheme.CARTOON,
-        displayBoundMolecules: true,
+        displayBoundMolecules: false,
         backgroundColor: '#FFFFFF',
         baseColor: '#DDDDDD',
         structureColors: {

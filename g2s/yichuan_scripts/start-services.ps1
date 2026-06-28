@@ -5,15 +5,15 @@ $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 Set-Location $Root
 
 $ps = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
+$profileArg = "--spring.profiles.active=local"
 $jars = @(
-    @{ Name = "G2S API (8081)"; Cmd = "java -Xmx4096m -jar pdb-alignment-api\target\pdb-alignment-api-0.1.0.jar" },
-    @{ Name = "PDB API (8082)"; Cmd = "java -Xmx2048m '-Dorg.springframework.boot.logging.LoggingSystem=org.springframework.boot.logging.java.JavaLoggingSystem' -jar pdb\target\pdb-0.1.0.war --server.port=8082" },
-    @{ Name = "Web UI (5443)";    Cmd = "java -Xmx4096m -jar pdb-alignment-web\target\pdb-alignment-web-0.1.0.jar" }
+    @{ Name = "G2S API (8081)"; Cmd = "java -Xmx4096m -jar pdb-alignment-api\target\pdb-alignment-api-0.1.0.jar $profileArg" },
+    @{ Name = "PDB API (8082)"; Cmd = "java -Xmx2048m '-Dorg.springframework.boot.logging.LoggingSystem=org.springframework.boot.logging.java.JavaLoggingSystem' -jar pdb\target\pdb-0.1.0.war --server.port=8082 $profileArg" },
+    @{ Name = "Web UI (5443)";    Cmd = "java -Xmx4096m -jar pdb-alignment-web\target\pdb-alignment-web-0.1.0.jar $profileArg" }
 )
 
 foreach ($s in $jars) {
-    $jarPath = $s.Cmd -replace 'java.*-jar ', '' -replace ' --server.port=8082', '' -replace '^.*-jar ', ''
-    $jarPath = ($s.Cmd -split '-jar ')[1] -replace ' --server.port=8082', ''
+    $jarPath = (($s.Cmd -split '-jar ', 2)[1] -split ' ', 2)[0]
     if (-not (Test-Path (Join-Path $Root $jarPath))) {
         throw "Build artifact missing: $jarPath. Run: mvn clean package -DskipTests"
     }

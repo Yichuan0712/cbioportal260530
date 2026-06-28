@@ -941,8 +941,13 @@ export default class StructureVisualizer3D extends StructureVisualizer {
             this._3dMolViewer.setHoverDuration(16);
         }
 
+        const hoverSel =
+            this.state.chainId && this.state.chainId.length > 0
+                ? { chain: this.state.chainId }
+                : {};
+
         this._3dMolViewer.setHoverable(
-            {},
+            hoverSel,
             true,
             (atom: { chain?: string; resi?: number; x?: number; y?: number; z?: number }) =>
                 this.handleResidueHover(atom),
@@ -1338,6 +1343,14 @@ export default class StructureVisualizer3D extends StructureVisualizer {
         this.reapplyPersistentResidueHighlight(chain, resi);
     }
 
+    private isSelectedStructureChain(chain: string): boolean {
+        const selected = this.state.chainId;
+        if (!selected || !chain) {
+            return false;
+        }
+        return chain.toUpperCase() === selected.toUpperCase();
+    }
+
     private restoreHoveredResidueStyle(chain: string, resi: number): void {
         if (!this._3dMolViewer) {
             return;
@@ -1346,6 +1359,10 @@ export default class StructureVisualizer3D extends StructureVisualizer {
         const props = this.props;
         const defaultProps = StructureVisualizer.defaultProps;
         const selector = { chain, resi };
+        const onSelectedChain = this.isSelectedStructureChain(chain);
+        const translucency = onSelectedChain
+            ? props.chainTranslucency ?? defaultProps.chainTranslucency
+            : props.baseTranslucency ?? defaultProps.baseTranslucency;
 
         if (
             props.structureSource === StructureSource.ALPHAFOLD &&
@@ -1366,18 +1383,18 @@ export default class StructureVisualizer3D extends StructureVisualizer {
             return;
         }
 
-        let style =
-            StructureVisualizer3D.PROTEIN_SCHEME_PRESETS[props.proteinScheme];
-        this.addTransparencyToStyle(
-            props.chainTranslucency || defaultProps.chainTranslucency,
-            style
+        const style = _.cloneDeep(
+            StructureVisualizer3D.PROTEIN_SCHEME_PRESETS[props.proteinScheme]
         );
+        this.addTransparencyToStyle(translucency, style);
 
         const helpers = this.currentResidueToPositionMap[resi] || [];
 
         if (helpers.length === 0) {
-            const color = props.chainColor || defaultProps.chainColor;
-            this.applyStyleForSelector(selector, _.cloneDeep(style));
+            const color = onSelectedChain
+                ? props.chainColor || defaultProps.chainColor
+                : props.baseColor || defaultProps.baseColor;
+            this.applyStyleForSelector(selector, style);
             this.setColor(color, selector, style);
             return;
         }

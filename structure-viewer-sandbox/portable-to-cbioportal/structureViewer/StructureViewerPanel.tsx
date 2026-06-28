@@ -139,7 +139,7 @@ export default class StructureViewerPanel extends React.Component<
     @observable protected pinnedResidue: IStructureResiduePin | null = null;
     @observable protected structureSource: StructureSource =
         StructureSource.PDB;
-    @observable protected displayBoundMolecules: boolean = true;
+    @observable protected displayBoundMolecules: boolean = false;
     @observable protected displayPaeHeatmap: boolean = false;
     @observable protected structureLoadStatus: StructureLoadStatus = 'idle';
     @observable protected structureLoadError: string | null = null;
