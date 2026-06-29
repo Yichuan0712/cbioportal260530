@@ -12,6 +12,13 @@ export function groupMutationsByProteinStart(
     return Object.values(grouped);
 }
 
+/** Official MutationMapper default: one mutation per group (mergeMutationsBy unset). */
+export function groupMutationsForMutationMapper(
+    mutations: Mutation[]
+): Mutation[][] {
+    return mutations.map(mutation => [mutation]);
+}
+
 /** Positions with the most mutation records within the PDB chain alignment range. */
 export function pickSelectedPositions(
     mutations: Mutation[],

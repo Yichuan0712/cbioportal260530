@@ -87,6 +87,18 @@ export default defineConfig({
                 secure: true,
                 rewrite: path => path.replace(/^\/alphafold-api/, ''),
             },
+            '/mygene-api': {
+                target: 'https://mygene.info',
+                changeOrigin: true,
+                secure: true,
+                rewrite: path => path.replace(/^\/mygene-api/, ''),
+            },
+            '/uniprot-api': {
+                target: 'https://rest.uniprot.org',
+                changeOrigin: true,
+                secure: true,
+                rewrite: path => path.replace(/^\/uniprot-api/, ''),
+            },
         },
     },
 });

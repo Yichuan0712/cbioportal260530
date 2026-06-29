@@ -194,6 +194,8 @@ export default class StructureViewerPanel extends React.Component<
             this
         );
         this.handleResidueClick = this.handleResidueClick.bind(this);
+        this.handleStructureBackgroundClick =
+            this.handleStructureBackgroundClick.bind(this);
         this.handleBoundMoleculeChange = this.handleBoundMoleculeChange.bind(
             this
         );
@@ -1033,6 +1035,7 @@ export default class StructureViewerPanel extends React.Component<
                     pinnedResidue={this.pinnedResidue}
                     paeResiduePair={this.paeResiduePairHighlight}
                     onResidueClick={this.handleResidueClick}
+                    onBackgroundClick={this.handleStructureBackgroundClick}
                     pdbId={this.viewerPdbId || ''}
                     uniprotId={this.props.uniprotId}
                     chainId={this.viewerChainId || ''}
@@ -1344,8 +1347,21 @@ export default class StructureViewerPanel extends React.Component<
     }
 
     @action
+    private clearStructureInteractionSelection(): void {
+        this.pinnedResidue = null;
+        this.selectedMutationLabel = null;
+        this.paeFocusCell = null;
+    }
+
+    @action
+    private handleStructureBackgroundClick(): void {
+        this.clearStructureInteractionSelection();
+    }
+
+    @action
     private handleMutationLabelClick(label: IMutationLabelSpec) {
         this.selectedMutationLabel = label;
+        this.paeFocusCell = null;
         this.pinnedResidue = {
             chain: this.viewerChainId || '',
             resi: label.structurePosition,
@@ -1361,11 +1377,11 @@ export default class StructureViewerPanel extends React.Component<
             this.pinnedResidue?.resi === resi &&
             pinnedKey === chainKey
         ) {
-            this.pinnedResidue = null;
-            this.selectedMutationLabel = null;
+            this.clearStructureInteractionSelection();
             return;
         }
 
+        this.paeFocusCell = null;
         this.pinnedResidue = { chain, resi };
 
         const matchingLabel = this.mutationLabels.find(
@@ -1376,8 +1392,7 @@ export default class StructureViewerPanel extends React.Component<
 
     @action
     private handleMutationLabelDetailClose() {
-        this.selectedMutationLabel = null;
-        this.pinnedResidue = null;
+        this.clearStructureInteractionSelection();
     }
 
     private handleBoundMoleculeChange() {

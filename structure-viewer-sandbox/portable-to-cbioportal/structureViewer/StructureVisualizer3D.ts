@@ -79,6 +79,7 @@ export default class StructureVisualizer3D extends StructureVisualizer {
         'pinnedResidue',
         'paeResiduePair',
         'onResidueClick',
+        'onBackgroundClick',
         'onMutationLabelClick',
         'onStructureLoadStatusChange',
     ];
@@ -103,6 +104,8 @@ export default class StructureVisualizer3D extends StructureVisualizer {
     private _hoveredChain: string | null = null;
     private _hoverPickReady = false;
     private _clickPickReady = false;
+    private _backgroundClickListenerAttached = false;
+    private _boundBackgroundMouseUp: ((ev: MouseEvent) => void) | null = null;
     private _appliedPin: { chain: string; resi: number } | null = null;
     private _appliedPaePair: {
         chain: string;
@@ -889,6 +892,78 @@ export default class StructureVisualizer3D extends StructureVisualizer {
             resi?: number;
         }) => this.handleResidueClick(atom));
         this._clickPickReady = true;
+        this.ensureBackgroundClickListener();
+    }
+
+    /**
+     * 3Dmol only fires atom clicks; empty canvas clicks need a separate listener.
+     */
+    private ensureBackgroundClickListener(): void {
+        if (
+            this._backgroundClickListenerAttached ||
+            !this._3dMolViewer ||
+            typeof document === 'undefined'
+        ) {
+            return;
+        }
+
+        this._boundBackgroundMouseUp = (ev: MouseEvent) => {
+            this.handleViewerBackgroundMouseUp(ev);
+        };
+        document.body.addEventListener('mouseup', this._boundBackgroundMouseUp);
+        this._backgroundClickListenerAttached = true;
+    }
+
+    private handleViewerBackgroundMouseUp(ev: MouseEvent): void {
+        const viewer = this._3dMolViewer;
+        const onBackgroundClick = this.props.onBackgroundClick;
+
+        if (!viewer || !onBackgroundClick || typeof viewer.getX !== 'function') {
+            return;
+        }
+
+        const pageX = viewer.getX(ev);
+        const pageY = viewer.getY(ev);
+
+        if (
+            pageX === undefined ||
+            pageY === undefined ||
+            typeof viewer.isInViewer !== 'function' ||
+            !viewer.isInViewer(pageX, pageY) ||
+            typeof viewer.closeEnoughForClick !== 'function' ||
+            !viewer.closeEnoughForClick(ev) ||
+            typeof viewer.mouseXY !== 'function' ||
+            typeof viewer.targetedObjects !== 'function'
+        ) {
+            return;
+        }
+
+        const mouse = viewer.mouseXY(pageX, pageY);
+        const clickables = viewer.clickables || [];
+        const intersects = viewer.targetedObjects(
+            mouse.x,
+            mouse.y,
+            clickables
+        );
+
+        if (!intersects || intersects.length === 0) {
+            onBackgroundClick();
+        }
+    }
+
+    private removeBackgroundClickListener(): void {
+        if (
+            this._backgroundClickListenerAttached &&
+            this._boundBackgroundMouseUp &&
+            typeof document !== 'undefined'
+        ) {
+            document.body.removeEventListener(
+                'mouseup',
+                this._boundBackgroundMouseUp
+            );
+        }
+        this._backgroundClickListenerAttached = false;
+        this._boundBackgroundMouseUp = null;
     }
 
     private cancelHoverSyncFrame(): void {
@@ -904,6 +979,7 @@ export default class StructureVisualizer3D extends StructureVisualizer {
         this._hoveredChain = null;
         this._hoverPickReady = false;
         this._clickPickReady = false;
+        this.removeBackgroundClickListener();
         this._appliedPin = null;
         this._appliedPaePair = null;
         this._appliedHover = null;

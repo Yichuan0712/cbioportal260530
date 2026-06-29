@@ -37,6 +37,8 @@ export interface EnsemblTranscript {
     uniprotId: string;
     transcriptId: string;
     transcriptIdVersion?: string;
+    refseqMrnaId?: string;
+    ccdsId?: string;
     geneId?: string;
     proteinId?: string;
     hugoSymbols?: string[];

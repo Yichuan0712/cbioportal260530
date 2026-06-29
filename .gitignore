@@ -1,3 +1,9 @@
 # Monorepo root — subprojects have their own .gitignore files
 # (cbioportal/, cbioportal-frontend/, g2s/)
 tools/
+
+# Frozen structure-viewer sandbox snapshots (read-only reference; work in structure-viewer-sandbox/)
+structure-viewer-sandbox-v0530/
+structure-viewer-sandbox-v0531/
+structure-viewer-sandbox-v0601/
+structure-viewer-sandbox-v0602/

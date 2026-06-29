@@ -25,12 +25,16 @@ export interface SandboxDriverAnnotationSettings {
     oncoKb?: boolean;
     hotspots?: boolean;
     customBinary?: boolean;
+    /** When true, MSK-style driverTiersFilter counts as putative driver (official default tiers on). */
+    customTiers?: boolean;
 }
 
 const DEFAULT_DRIVER_SETTINGS: Required<SandboxDriverAnnotationSettings> = {
-    oncoKb: true,
+    // Results View uses OncoKB indicator map (tumor-type keyed); GN oncokb field is not equivalent.
+    oncoKb: false,
     hotspots: true,
     customBinary: true,
+    customTiers: false,
 };
 
 export function getVariantAnnotationForMutation(
@@ -86,12 +90,16 @@ export function evaluatePutativeDriverInfo(
     const customDriverBinary = !!(
         resolved.customBinary && mutation.driverFilter === PUTATIVE_DRIVER
     );
+    const customDriverTier =
+        resolved.customTiers && mutation.driverTiersFilter
+            ? mutation.driverTiersFilter
+            : undefined;
 
     return {
         oncoKb,
         hotspots,
         customDriverBinary,
-        customDriverTier: undefined,
+        customDriverTier,
     };
 }
 

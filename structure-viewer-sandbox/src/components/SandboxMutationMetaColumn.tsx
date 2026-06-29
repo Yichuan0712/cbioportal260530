@@ -13,9 +13,14 @@ import MutationMapperDataStore, {
 import {
     ANNOTATED_PROTEIN_IMPACT_FILTER_TYPE,
     ANNOTATED_PROTEIN_IMPACT_TYPE_FILTER_ID,
-    groupMutationsByProteinImpactTypeForCounts,
+    computeMutationCountsByProteinImpactType,
 } from 'shared/lib/MutationMapperFilterUtils';
-import { SANDBOX_HUGO_GENE } from '../api/sandboxApiConfig';
+import {
+    getNCBIlink,
+    getTranscriptSummaryUrl,
+    getVersionedEnsemblTranscriptId,
+} from '../lib/geneSummaryLinks';
+import geneSummaryStyles from './mutationMapper/geneSummary.module.scss';
 import './mutationMapper/mutations.scss';
 import styles from './SandboxMutationMetaColumn.module.scss';
 
@@ -23,14 +28,97 @@ export interface ISandboxMutationMetaColumnProps {
     store: MutationMapperDataStore;
     hugoGeneSymbol?: string;
     ensemblTranscriptId?: string;
-    uniprotId?: string;
-    refseqTranscriptId?: string;
+    ensemblTranscriptVersion?: string;
+    refseqMrnaId?: string;
+    ccdsId?: string;
+    uniprotEntryName?: string;
     mutationCount?: number;
     somaticMutationRatePercent?: number | null;
     panelOpen: boolean;
     canOpenViewer: boolean;
     onView3DStructure: () => void;
     isPutativeDriver?: (mutation: Partial<import('cbioportal-ts-api-client').Mutation>) => boolean;
+}
+
+function renderCompactGeneSummary(props: {
+    refseqMrnaId?: string;
+    ensemblTranscriptId?: string;
+    ensemblTranscriptVersion?: string;
+    ccdsId?: string;
+    uniprotEntryName?: string;
+}) {
+    const {
+        refseqMrnaId,
+        ensemblTranscriptId,
+        ensemblTranscriptVersion,
+        ccdsId,
+        uniprotEntryName,
+    } = props;
+
+    const versionedTranscriptId = getVersionedEnsemblTranscriptId(
+        ensemblTranscriptId || '',
+        ensemblTranscriptVersion
+    );
+
+    const refSeq = refseqMrnaId ? (
+        <a href={getNCBIlink(`/nuccore/${refseqMrnaId}`)} target="_blank">
+            {refseqMrnaId}
+        </a>
+    ) : (
+        '-'
+    );
+
+    const ensembl =
+        ensemblTranscriptId && versionedTranscriptId ? (
+            <a
+                href={getTranscriptSummaryUrl(ensemblTranscriptId)}
+                target="_blank"
+            >
+                {versionedTranscriptId}
+            </a>
+        ) : (
+            '-'
+        );
+
+    const ccds = ccdsId ? (
+        <a
+            href={getNCBIlink({
+                pathname: '/CCDS/CcdsBrowse.cgi',
+                query: {
+                    REQUEST: 'CCDS',
+                    DATA: ccdsId,
+                },
+            })}
+            target="_blank"
+        >
+            {ccdsId}
+        </a>
+    ) : (
+        '-'
+    );
+
+    const uniprot = uniprotEntryName ? (
+        <a
+            href={`https://www.uniprot.org/uniprot/${uniprotEntryName}`}
+            target="_blank"
+        >
+            {uniprotEntryName}
+        </a>
+    ) : (
+        '-'
+    );
+
+    return (
+        <div className={geneSummaryStyles.geneSummaryCompact}>
+            <span data-test="compactGeneSummaryRefSeq">{refSeq}</span>
+            {' | '}
+            {ensembl}
+            <br />
+            <span data-test="compactGeneSummaryCCDS">{ccds}</span>
+            {' | '}
+            <span data-test="compactGeneSummaryUniProt">{uniprot}</span>
+        </div>
+    );
 }
 
 @observer
@@ -44,8 +132,10 @@ class SandboxMutationMetaColumn extends React.Component<ISandboxMutationMetaColu
     get mutationCountsByProteinImpactType(): {
         [proteinImpactType: string]: number;
     } {
-        return groupMutationsByProteinImpactTypeForCounts(
+        return computeMutationCountsByProteinImpactType(
             this.props.store.allData,
+            this.props.store.dataFilters,
+            this.props.store.applyFilter.bind(this.props.store),
             this.props.isPutativeDriver
         );
     }
@@ -102,9 +192,11 @@ class SandboxMutationMetaColumn extends React.Component<ISandboxMutationMetaColu
 
     render() {
         const {
+            refseqMrnaId,
             ensemblTranscriptId,
-            uniprotId,
-            refseqTranscriptId,
+            ensemblTranscriptVersion,
+            ccdsId,
+            uniprotEntryName,
             hugoGeneSymbol,
             mutationCount,
             panelOpen,
@@ -112,37 +204,28 @@ class SandboxMutationMetaColumn extends React.Component<ISandboxMutationMetaColu
             onView3DStructure,
         } = this.props;
 
+        const dropdownValue = refseqMrnaId || '-';
+
         return (
             <div className={styles['mutation-meta-column']}>
                 <div className={styles['transcript-row']}>
                     <select
                         className="form-control input-sm"
-                        value={refseqTranscriptId || 'NM_000346'}
+                        value={dropdownValue}
                         disabled
                     >
-                        <option value={refseqTranscriptId || 'NM_000346'}>
-                            {refseqTranscriptId || 'NM_000346'}
-                        </option>
+                        <option value={dropdownValue}>{dropdownValue}</option>
                     </select>
                 </div>
 
                 <div className={styles['gene-links']}>
-                    <span>{refseqTranscriptId || 'NM_000346'}</span>
-                    {ensemblTranscriptId && (
-                        <>
-                            {' '}
-                            | <span>{ensemblTranscriptId}</span>
-                        </>
-                    )}
-                </div>
-                <div className={styles['gene-links']}>
-                    <span>{hugoGeneSymbol || SANDBOX_HUGO_GENE}_HUMAN</span>
-                    {uniprotId && (
-                        <>
-                            {' '}
-                            | <span>{uniprotId}</span>
-                        </>
-                    )}
+                    {renderCompactGeneSummary({
+                        refseqMrnaId,
+                        ensemblTranscriptId,
+                        ensemblTranscriptVersion,
+                        ccdsId,
+                        uniprotEntryName,
+                    })}
                 </div>
 
                 {this.mutationFrequencyPercent != null && (

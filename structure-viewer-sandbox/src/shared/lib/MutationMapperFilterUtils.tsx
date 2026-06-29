@@ -1,6 +1,15 @@
 import { Mutation } from 'cbioportal-ts-api-client';
-import { ProteinImpactType, getProteinImpactType } from 'cbioportal-frontend-commons';
+import {
+    ProteinImpactType,
+    getProteinImpactType,
+} from 'cbioportal-frontend-commons';
 import { ProteinImpactTypeFilter } from '../../lib/react-mutation-mapper/filter/ProteinImpactTypeFilter';
+import { DataFilter, DataFilterType } from 'react-mutation-mapper';
+import { ApplyFilterFn } from '../../lib/react-mutation-mapper/model/FilterApplier';
+import {
+    applyDataFilters,
+    groupDataByGroupFilters,
+} from '../../lib/react-mutation-mapper/util/FilterUtils';
 
 export {
     SELECTOR_VALUE_WITH_VUS,
@@ -65,22 +74,55 @@ export function createAnnotatedProteinImpactTypeFilter(
     };
 }
 
+/** Match official MutationMapper: count protein positions, classify by first mutation in each group. */
+export function computeMutationCountsByProteinImpactType(
+    allData: Mutation[][],
+    dataFilters: DataFilter[],
+    applyFilter: ApplyFilterFn,
+    isPutativeDriver?: (mutation: Partial<Mutation>) => boolean
+): { [proteinImpactType: string]: number } {
+    const filtersWithoutProteinImpactTypeFilter = dataFilters.filter(
+        f =>
+            f.type !== DataFilterType.PROTEIN_IMPACT_TYPE &&
+            f.type !== ANNOTATED_PROTEIN_IMPACT_FILTER_TYPE
+    );
+
+    const sortedFilteredData = applyDataFilters(
+        allData,
+        filtersWithoutProteinImpactTypeFilter,
+        applyFilter
+    );
+
+    const groupFilters = Object.values(ProteinImpactType).map(value => ({
+        group: value,
+        filter: {
+            type: DataFilterType.PROTEIN_IMPACT_TYPE,
+            values: [value],
+        },
+    }));
+
+    const groupedData = groupDataByGroupFilters(
+        groupFilters,
+        sortedFilteredData,
+        createAnnotatedProteinImpactTypeFilter(isPutativeDriver)
+    );
+
+    const map: { [proteinImpactType: string]: number } = {};
+    groupedData.forEach(g => {
+        map[g.group] = g.data.length;
+    });
+    return map;
+}
+
+/** @deprecated Use computeMutationCountsByProteinImpactType for official parity. */
 export function groupMutationsByProteinImpactTypeForCounts(
     sortedFilteredData: Mutation[][],
     isPutativeDriver?: (mutation: Partial<Mutation>) => boolean
 ): { [proteinImpactType: string]: number } {
-    const map: { [proteinImpactType: string]: number } = {};
-
-    sortedFilteredData.forEach(group => {
-        group.forEach(mutation => {
-            const annotated = getAnnotatedProteinImpactType(
-                mutation,
-                getProteinImpactType(mutation.mutationType || 'other'),
-                isPutativeDriver
-            );
-            map[annotated] = (map[annotated] || 0) + 1;
-        });
-    });
-
-    return map;
+    return computeMutationCountsByProteinImpactType(
+        sortedFilteredData,
+        [],
+        createAnnotatedProteinImpactTypeFilter(isPutativeDriver),
+        isPutativeDriver
+    );
 }

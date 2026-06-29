@@ -130,6 +130,8 @@ export interface IStructureVisualizerProps {
     ) => void;
     onMutationLabelClick?: (label: IMutationLabelSpec) => void;
     onResidueClick?: (chain: string, resi: number) => void;
+    /** Click on 3D viewer background (no atom hit) — clear pin / PAE selection. */
+    onBackgroundClick?: () => void;
 }
 
 abstract class StructureVisualizer {

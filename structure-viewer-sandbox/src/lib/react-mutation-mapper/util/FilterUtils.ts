@@ -78,3 +78,13 @@ export function applyDefaultProteinImpactTypeFilter(
         getProteinImpactType(mutation.mutationType || 'other')
     );
 }
+
+export function applyDataFilters(
+    data: Mutation[][],
+    dataFilters: DataFilter[],
+    applyFilter: ApplyFilterFn
+) {
+    return dataFilters.length > 0
+        ? data.filter(m => applyDataFiltersOnDatum(m, dataFilters, applyFilter))
+        : data;
+}

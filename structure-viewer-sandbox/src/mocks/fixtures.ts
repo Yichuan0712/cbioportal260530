@@ -3,8 +3,13 @@ import { Mutation } from 'cbioportal-ts-api-client';
 import { IPdbChain, PdbAlignmentIndex } from 'shared/model/Pdb';
 import { PUTATIVE_DRIVER } from '../lib/putativeDriverUtils';
 
-/** SOX9 — official demo: NM_000346 / ENST00000245479 / P48436 */
+/** SOX9 — official demo: NM_000346 / ENST00000245479.2 / CCDS11689 / SOX9_HUMAN / P48436 */
 export const MOCK_UNIPROT_ID = 'P48436';
+export const MOCK_REFSEQ_MRNA_ID = 'NM_000346';
+export const MOCK_ENSEMBL_TRANSCRIPT_ID = 'ENST00000245479';
+export const MOCK_ENSEMBL_TRANSCRIPT_VERSION = '2';
+export const MOCK_CCDS_ID = 'CCDS11689';
+export const MOCK_UNIPROT_ENTRY_NAME = 'SOX9_HUMAN';
 
 export const PDB_MOCK_CHAIN: IPdbChain = {
     pdbId: '1p98',

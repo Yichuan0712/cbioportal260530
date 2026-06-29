@@ -5,7 +5,6 @@ import { DEFAULT_PROTEIN_IMPACT_TYPE_COLORS } from 'lib/proteinImpact';
 import { sandboxG2SStore } from './store/SandboxG2SStore';
 import {
     SANDBOX_HUGO_GENE,
-    SANDBOX_REFSEQ_TRANSCRIPT_ID,
     USE_MOCK_G2S_DATA,
     USE_MOCK_MUTATIONS,
 } from './api/sandboxApiConfig';
@@ -60,8 +59,10 @@ const SandboxApp = observer(function SandboxApp() {
                         store={store.mutationDataStore}
                         hugoGeneSymbol={SANDBOX_HUGO_GENE}
                         ensemblTranscriptId={store.ensemblTranscriptId}
-                        uniprotId={store.uniprotId}
-                        refseqTranscriptId={SANDBOX_REFSEQ_TRANSCRIPT_ID}
+                        ensemblTranscriptVersion={store.ensemblTranscriptVersion}
+                        refseqMrnaId={store.refseqMrnaId}
+                        ccdsId={store.ccdsId}
+                        uniprotEntryName={store.uniprotEntryName}
                         mutationCount={store.mutationCount}
                         somaticMutationRatePercent={store.somaticMutationRatePercent}
                         panelOpen={panelOpen}

@@ -16,11 +16,13 @@ import { Alignment, VariantAnnotation } from 'genome-nexus-ts-api-client';
 import { Mutation } from 'cbioportal-ts-api-client';
 import { fetchAlignmentsByEnsembl } from '../api/g2sApi';
 import { fetchCanonicalTranscriptByHugoSymbol } from '../api/genomeNexusApi';
+import { fetchUniprotEntryNameForGene } from '../api/geneAnnotationApi';
 import { fetchGeneByHugoSymbol, fetchMutationsForGene, fetchMutationMolecularProfilesForStudies, fetchSamplesForStudies } from '../api/cbioportalApi';
 import { fetchVariantAnnotationsIndexedByGenomicLocation } from '../api/variantAnnotationApi';
 import { fetchHotspotIndexForMutations } from '../api/hotspotApi';
 import {
     groupMutationsByProteinStart,
+    groupMutationsForMutationMapper,
     countMutationsInRange,
 } from '../api/mutationUtils';
 import {
@@ -37,7 +39,12 @@ import {
 } from '../api/sandboxApiConfig';
 import {
     MOCK_ALIGNMENT_INDEX,
+    MOCK_CCDS_ID,
+    MOCK_ENSEMBL_TRANSCRIPT_ID,
+    MOCK_ENSEMBL_TRANSCRIPT_VERSION,
     MOCK_MUTATIONS,
+    MOCK_REFSEQ_MRNA_ID,
+    MOCK_UNIPROT_ENTRY_NAME,
     MOCK_UNIPROT_ID,
     MOCK_VARIANT_ANNOTATIONS,
     PDB_HEADER_MOCK,
@@ -81,7 +88,11 @@ export default class SandboxG2SStore {
     @observable status: SandboxLoadStatus = 'idle';
     @observable errorMessage: string | null = null;
     @observable uniprotId: string = MOCK_UNIPROT_ID;
-    @observable ensemblTranscriptId: string = '';
+    @observable uniprotEntryName: string = MOCK_UNIPROT_ENTRY_NAME;
+    @observable ensemblTranscriptId: string = MOCK_ENSEMBL_TRANSCRIPT_ID;
+    @observable ensemblTranscriptVersion: string = MOCK_ENSEMBL_TRANSCRIPT_VERSION;
+    @observable refseqMrnaId: string = MOCK_REFSEQ_MRNA_ID;
+    @observable ccdsId: string = MOCK_CCDS_ID;
     @observable mutationCount: number = 0;
     @observable mappedMutationCount: number = 0;
     @observable somaticMutationRatePercent: number | null = null;
@@ -112,8 +123,8 @@ export default class SandboxG2SStore {
     @action.bound
     async initialize(): Promise<void> {
         if (USE_MOCK_G2S_DATA && USE_MOCK_MUTATIONS) {
-            this.status = 'complete';
             this.mutationCount = _.flatten(MOCK_MUTATIONS).length;
+            this.status = 'complete';
             return;
         }
 
@@ -121,18 +132,27 @@ export default class SandboxG2SStore {
         this.errorMessage = null;
 
         try {
-            let transcriptId = '';
-            let uniprotId = MOCK_UNIPROT_ID;
+            const gene = await fetchGeneByHugoSymbol(SANDBOX_HUGO_GENE);
+
+            let transcriptId = this.ensemblTranscriptId;
+            let uniprotId = this.uniprotId;
 
             if (!USE_MOCK_G2S_DATA) {
-                const transcript = await fetchCanonicalTranscriptByHugoSymbol(
-                    SANDBOX_HUGO_GENE
-                );
+                const [transcript, uniprotEntryName] = await Promise.all([
+                    fetchCanonicalTranscriptByHugoSymbol(SANDBOX_HUGO_GENE),
+                    fetchUniprotEntryNameForGene(gene.entrezGeneId),
+                ]);
                 transcriptId = transcript.transcriptId;
                 uniprotId = transcript.uniprotId;
+
                 runInAction(() => {
-                    this.ensemblTranscriptId = transcriptId;
+                    this.ensemblTranscriptId = transcript.transcriptId;
+                    this.ensemblTranscriptVersion =
+                        transcript.transcriptIdVersion || '';
+                    this.refseqMrnaId = transcript.refseqMrnaId || '';
+                    this.ccdsId = transcript.ccdsId || '';
                     this.uniprotId = uniprotId;
+                    this.uniprotEntryName = uniprotEntryName;
                 });
 
                 const alignments = await fetchAlignmentsByEnsembl(transcriptId);
@@ -144,10 +164,17 @@ export default class SandboxG2SStore {
                         this.applyAlignments(alignments);
                     }
                 });
+            } else {
+                const uniprotEntryName = await fetchUniprotEntryNameForGene(
+                    gene.entrezGeneId
+                );
+                runInAction(() => {
+                    this.uniprotEntryName = uniprotEntryName;
+                });
             }
 
             if (!USE_MOCK_MUTATIONS) {
-                await this.loadMutations(uniprotId);
+                await this.loadMutations(gene, uniprotId);
             }
 
             runInAction(() => {
@@ -162,8 +189,10 @@ export default class SandboxG2SStore {
         }
     }
 
-    private async loadMutations(_uniprotId: string) {
-        const gene = await fetchGeneByHugoSymbol(SANDBOX_HUGO_GENE);
+    private async loadMutations(
+        gene: Awaited<ReturnType<typeof fetchGeneByHugoSymbol>>,
+        _uniprotId: string
+    ) {
         const [rawMutations, molecularProfiles, cohortSamples] =
             await Promise.all([
                 fetchMutationsForGene(gene.entrezGeneId),
@@ -208,7 +237,7 @@ export default class SandboxG2SStore {
         const chain =
             this.pdbChainDataStore.selectedChain ||
             this.pdbChainDataStore.allData[0];
-        const grouped = groupMutationsByProteinStart(annotatedMutations);
+        const grouped = groupMutationsForMutationMapper(annotatedMutations);
         const mappedMutationCount = chain
             ? countMutationsInRange(annotatedMutations, chain)
             : 0;

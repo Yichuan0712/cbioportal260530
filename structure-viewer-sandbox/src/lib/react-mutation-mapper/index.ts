@@ -17,6 +17,7 @@ export {
 
 export {
     onFilterOptionSelect,
+    applyDataFilters,
     applyDataFiltersOnDatum,
     groupDataByGroupFilters,
     findAllUniquePositions,
