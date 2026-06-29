@@ -7,7 +7,7 @@
  *
  * Diff vs upstream cBioPortal: `structureViewerPanel` passes
  *   indexedVariantAnnotations={this.props.store.indexedVariantAnnotations.result}
- * See ../INTEGRATION.md
+ * See ../README.md (Step 2)
  */
 import * as React from 'react';
 import _ from 'lodash';
@@ -394,7 +394,7 @@ export default class MutationMapper<
                  * 3D mutation label detail (HGVSp, SIFT, PolyPhen, …): reuses Genome Nexus data
                  * already loaded for the Mutation Mapper table — no extra API call.
                  * copy-back only updates structureViewer/; this prop MUST stay here in MutationMapper.
-                 * See structure-viewer-sandbox/portable-to-cbioportal/INTEGRATION.md
+                 * See structure-viewer-sandbox/portable-to-cbioportal/README.md
                  */
                 indexedVariantAnnotations={
                     this.props.store.indexedVariantAnnotations.result

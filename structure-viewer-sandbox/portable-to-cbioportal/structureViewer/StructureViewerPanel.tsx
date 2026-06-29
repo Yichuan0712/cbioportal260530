@@ -95,7 +95,7 @@ export interface IStructureViewerPanelProps extends IProteinImpactTypeColors {
      * **cBioPortal wiring (NOT in copy-back):** pass from
      * `cbioportal-frontend/src/shared/components/mutationMapper/MutationMapper.tsx`
      * → `structureViewerPanel` → `this.props.store.indexedVariantAnnotations.result`.
-     * See `portable-to-cbioportal/INTEGRATION.md`.
+     * See `portable-to-cbioportal/README.md` (Step 2).
      */
     indexedVariantAnnotations?: {
         [genomicLocation: string]: VariantAnnotation;

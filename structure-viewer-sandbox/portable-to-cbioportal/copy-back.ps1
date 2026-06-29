@@ -1,4 +1,4 @@
-# Copy portable structure viewer code into cBioPortal frontend.
+# Replace cBioPortal structureViewer with portable copy (delete target first).
 # Run from repo root: .\structure-viewer-sandbox\portable-to-cbioportal\copy-back.ps1
 
 $ErrorActionPreference = 'Stop'
@@ -6,16 +6,22 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $source = Join-Path $PSScriptRoot 'structureViewer'
 $target = Join-Path $repoRoot 'cbioportal-frontend\src\shared\components\structureViewer'
+$targetParent = Split-Path $target -Parent
 
 if (-not (Test-Path $source)) {
     Write-Error "Source not found: $source"
 }
 
-if (-not (Test-Path $target)) {
-    New-Item -ItemType Directory -Force -Path $target | Out-Null
+if (-not (Test-Path $targetParent)) {
+    Write-Error "Target parent not found: $targetParent"
 }
 
-Copy-Item -Path (Join-Path $source '*') -Destination $target -Recurse -Force
+if (Test-Path $target) {
+    Write-Host "Removing $target"
+    Remove-Item -Path $target -Recurse -Force
+}
 
-Write-Host "Copied structureViewer -> $target"
-Write-Host "Next: run cBioPortal frontend and test View 3D Structure in Mutation Mapper."
+Copy-Item -Path $source -Destination $targetParent -Recurse -Force
+
+Write-Host "Replaced structureViewer -> $target"
+Write-Host "Next: Step 2 in README (MutationMapper from reference)."
