@@ -3,4 +3,4 @@
 # start-services.ps1 already enables profile local.
 
 # Use rebuilt pipeline database (default prod name is pdb):
-spring.datasource.url=jdbc:mysql://localhost:3306/pdb_new?useSSL=false
+spring.datasource.url=jdbc:mysql://localhost:3306/pdb_2026?useSSL=false

@@ -1,165 +1,135 @@
-# G2S Environment Setup (Windows / PowerShell)
+# G2S setup (first time)
 
-How to set up everything needed to **build** the G2S project. Once this is done, see
-`START-SERVICES.md` for how to run the services.
+One-time install and build for local G2S (PDB alignments used by the structure viewer sandbox).  
+Daily startup: **`START-SERVICES.md`**.
 
-> All commands run from the **g2s project root** — the folder that contains `pom.xml` and
-> the `yichuan_scripts\` directory. `cd` into that folder first. All paths below are relative to it.
-
----
-
-## What you need to install
-
-| Tool | Version | Required for | Notes |
-|------|---------|--------------|-------|
-| Java JDK | **1.8** (exactly) | building & running | Amazon Corretto 8 recommended |
-| Maven | 3.9.x | building | Can be dropped into `g2s\tools\` (auto-detected) |
-| Docker Desktop | latest | MySQL + MongoDB | Databases run in containers |
-| BLAST+ | 2.4.0+ | **only** the data pipeline (`init`/`update`) | Not needed just to run the services |
-
-> The day-to-day services (APIs + web) only need **Java + Maven + Docker**. BLAST+ is only
-> required if you regenerate the alignment data from scratch with the pipeline.
+All commands below run from the **`g2s/`** folder (contains `pom.xml` and `yichuan_scripts\`).
 
 ---
 
-## 1. Java JDK 1.8
+## Install these tools
 
-Install Amazon Corretto 8 (easiest JDK 1.8 on Windows):
+| Tool | Version | Why |
+|------|---------|-----|
+| **Java JDK** | **1.8 only** | Build and run the three Java services (not Java 11+) |
+| **Maven** | 3.9.x | Build `.jar` / `.war` artifacts |
+| **Docker Desktop** | latest | MariaDB + MongoDB in containers |
+
+**Not needed** for running the 3D viewer: BLAST+ (only for regenerating alignment data via the pipeline).
+
+### Java 8
 
 ```powershell
 winget install Amazon.Corretto.8.JDK
 ```
 
-This installs to something like `C:\Program Files\Amazon Corretto\jdk1.8.0_xxx`.
-`yichuan_scripts\env.ps1` looks for it automatically (see section 4).
+`yichuan_scripts\env.ps1` auto-detects Corretto 8 (or `C:\Program Files\Java\jdk1.8.0_202`).
 
-> Java 1.8 is mandatory — the project does **not** build on Java 11+.
+### Maven
 
----
-
-## 2. Maven 3.9.x
-
-`yichuan_scripts\env.ps1` automatically adds Maven to PATH **if** it finds it at
-`g2s\tools\apache-maven-3.9.6`. The simplest setup is to put it exactly there:
+Either install system-wide:
 
 ```powershell
-# from the g2s root
-New-Item -ItemType Directory -Path tools -Force | Out-Null
-$url = "https://archive.apache.org/dist/maven/maven-3/3.9.6/binaries/apache-maven-3.9.6-bin.zip"
-Invoke-WebRequest -Uri $url -OutFile tools\maven.zip
-Expand-Archive -Path tools\maven.zip -DestinationPath tools -Force
-Remove-Item tools\maven.zip
+winget install Apache.Maven
 ```
 
-Resulting path: `g2s\tools\apache-maven-3.9.6\bin\mvn.cmd`.
+Or unpack into the repo (what `env.ps1` expects):
 
-> Alternative: install system-wide (`winget install Apache.Maven`) and ensure `mvn` is on PATH.
+```powershell
+# from g2s/
+New-Item -ItemType Directory -Path tools -Force | Out-Null
+Invoke-WebRequest -Uri "https://archive.apache.org/dist/maven/maven-3/3.9.6/binaries/apache-maven-3.9.6-bin.zip" -OutFile tools\maven.zip
+Expand-Archive tools\maven.zip tools -Force
+Remove-Item tools\maven.zip
+# → g2s\tools\apache-maven-3.9.6\bin\mvn.cmd
+```
 
----
+### Docker
 
-## 3. Docker Desktop
-
-Install Docker Desktop and start it (the whale icon must be running before you start the
-databases). Verify:
+Install [Docker Desktop](https://www.docker.com/products/docker-desktop/), start it, then:
 
 ```powershell
 docker --version
 ```
 
-The databases (MariaDB + MongoDB) are defined in `g2s\docker-compose.yml`; you do not
-install MySQL/MongoDB manually.
-
 ---
 
-## 4. Load the environment (`yichuan_scripts\env.ps1`)
+## One-time: create / build
 
-Run this **once per new PowerShell window** before building or running:
+Run once per fresh clone (order matters for the keystore).
 
-```powershell
-. .\yichuan_scripts\env.ps1
-```
+### 1. HTTPS keystore (for port 5443)
 
-It does three things:
-- Sets `JAVA_HOME` to a detected JDK 1.8 (Corretto 8 or `jdk1.8.0_202`) and puts it on PATH.
-- Adds `tools\apache-maven-3.9.6\bin` to PATH if present.
-- Adds Docker's bin folder to PATH if present.
-
-> It prints `java -version` and you will see it in **red text** with `NativeCommandError`.
-> This is NOT an error — `java -version` writes to stderr and PowerShell renders it red.
-> As long as you see `1.8.0_xxx`, the environment is correct.
-
-Verify both tools resolve:
+Not in git. Required for `pdb-alignment-web`:
 
 ```powershell
-java -version      # expect 1.8.0_xxx (shown in red, that's fine)
-mvn -version       # expect Apache Maven 3.9.6, Java version 1.8.0_xxx
-```
-
----
-
-## 5. Generate the HTTPS keystore (for the 5443 web UI)
-
-The `pdb-alignment-web` module serves HTTPS on port 5443 and is configured to load a
-keystore from the classpath:
-
-```
-server.ssl.key-store: classpath:keystore.p12
-server.ssl.key-store-password: 123456
-server.ssl.keyStoreType: PKCS12
-server.ssl.keyAlias: tomcat
-```
-
-This `keystore.p12` file is **not** committed to the repo, so a fresh clone is missing it
-and the web service fails to start (the 8081 and 8082 services are unaffected). Generate a
-self-signed one with the JDK's `keytool` — the alias/password/type below must match the
-config above:
-
-```powershell
+# from g2s/, after: . .\yichuan_scripts\env.ps1
 $ks = "pdb-alignment-web\src\main\resources\keystore.p12"
 & "$env:JAVA_HOME\bin\keytool.exe" -genkeypair -alias tomcat -storetype PKCS12 -keyalg RSA -keysize 2048 `
     -keystore $ks -storepass 123456 -keypass 123456 -validity 3650 `
     -dname "CN=localhost, OU=Dev, O=G2S, L=NA, ST=NA, C=US"
 ```
 
-> This is a one-time step per clone. Generate it **before** building (Step 6) so it gets
-> bundled into the web jar. It produces a self-signed certificate, so browsers will show a
-> warning at https://localhost:5443 — click "Advanced → proceed" to trust it.
+Browser will warn on `https://localhost:5443` (self-signed) — proceed anyway.
 
----
-
-## 6. Build the project
-
-"Build" = use Maven to compile the `.java` source code and package it into runnable
-`.jar` / `.war` files under each module's `target\` folder. You must build before you can
-run the services.
+### 2. Build Java artifacts
 
 ```powershell
 . .\yichuan_scripts\env.ps1
 mvn clean package -DskipTests
 ```
 
-A successful build produces four artifacts:
+Creates the jars/wars used by `start-services.ps1`:
 
-| Artifact | Module |
-|----------|--------|
-| `pdb\target\pdb-0.1.0.war` | core PDB API |
-| `pdb-alignment-api\target\pdb-alignment-api-0.1.0.jar` | G2S alignment API |
-| `pdb-alignment-web\target\pdb-alignment-web-0.1.0.jar` | web UI |
-| `pdb-alignment-pipeline\target\pdb-alignment-pipeline-0.1.0.jar` | data pipeline |
+| Output | Service |
+|--------|---------|
+| `pdb-alignment-api\target\pdb-alignment-api-0.1.0.jar` | G2S API :8081 |
+| `pdb\target\pdb-0.1.0.war` | PDB API :8082 |
+| `pdb-alignment-web\target\pdb-alignment-web-0.1.0.jar` | Web / alignments :5443 |
 
-> Rebuild only after changing code. Rebuild a single module, e.g. web:
-> `mvn package -pl pdb-alignment-web -am -DskipTests`
+### 3. Database (first time only)
+
+Start DB containers:
+
+```powershell
+docker compose up -d mysql mysql-old mongo
+```
+
+**Active alignments:** `pipeline-blast` → **`pdb_2026`** on **pdb-mariadb** (:3306). See **`g2s/README.md`** section B.
+
+**Legacy 2025 dump (optional archive):** import into **`pdb`** on **pdb-mariadb-old** (:3307). File:
+
+`g2s\mysqldump_pdb_2025_08_07.sql.gz`
+
+```powershell
+.\yichuan_scripts\import-db.ps1
+```
+
+**Already loaded both `pdb` and `pdb_new` in one container?** One-time split:
+
+```powershell
+.\yichuan_scripts\migrate-db-split.ps1
+```
+
+Quick check (active DB):
+
+```powershell
+docker exec pdb-mariadb mysql -u cbio -pcbio pdb_2026 -e "SELECT COUNT(*) FROM pdb_seq_alignment;"
+```
+
+Expect a large row count (millions). Empty or missing table → run pipeline-blast Setup/All or migrate script.
 
 ---
 
-## 7. Environment checklist
+## Checklist
 
-| Item | Verify with | Expected |
-|------|-------------|----------|
-| Java 1.8 | `java -version` | `1.8.0_xxx` |
-| Maven | `mvn -version` | `Apache Maven 3.9.6` + Java 1.8 |
-| Docker | `docker --version` | a version string |
-| Keystore | check `pdb-alignment-web\src\main\resources\keystore.p12` | file exists |
-| Build artifacts | check `target\` folders | 4 jar/war files exist |
+| Item | Check |
+|------|--------|
+| Java 8 | `. .\yichuan_scripts\env.ps1` then `java -version` → `1.8.0_xxx` (red stderr text is normal) |
+| Maven | `mvn -version` → Maven 3.9 + Java 1.8 |
+| Docker | `docker ps` → `pdb-mariadb`, `pdb-mariadb-old`, `pdb-mongo` |
+| Keystore | `pdb-alignment-web\src\main\resources\keystore.p12` exists |
+| Build | three `target\` artifacts above exist |
+| Data | `pdb_seq_alignment` row count is large |
 
-Once all pass, continue with **`START-SERVICES.md`**.
+Done → **`START-SERVICES.md`**.

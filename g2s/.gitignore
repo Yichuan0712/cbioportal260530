@@ -44,6 +44,7 @@ __pycache__/
 
 # --- Docker / local databases (large, machine-specific) ---
 mysql_data/
+mysql_data_old/
 mongo_data/
 data/
 
@@ -82,3 +83,4 @@ SETUP-PATH.local.md
 .env.*
 *.pem
 *.key
+**/keystore.p12

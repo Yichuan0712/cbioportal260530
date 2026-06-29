@@ -10,6 +10,7 @@ $dirs = @(
     "tmp\upload",
     "g2s_pdb",
     "mysql_data",
+    "mysql_data_old",
     "mongo_data"
 )
 foreach ($d in $dirs) {
@@ -21,8 +22,8 @@ foreach ($d in $dirs) {
 }
 
 Set-Location $Root
-Write-Host "Starting MySQL and MongoDB..."
-docker compose up -d mysql mongo
+Write-Host "Starting MySQL (pdb_2026) and legacy MySQL (pdb)..."
+docker compose up -d mysql mysql-old mongo
 
 Write-Host "Waiting for MySQL to accept connections..."
 $ready = $false

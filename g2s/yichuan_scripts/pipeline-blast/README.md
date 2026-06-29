@@ -1,10 +1,10 @@
 # G2S Pipeline — NCBI BLAST+
 
-Self-contained rebuild path under `yichuan_scripts/pipeline-blast/` (target DB: **`pdb_new`**).
+Self-contained rebuild path under `yichuan_scripts/pipeline-blast/` (target DB: **`pdb_2026`** on **`pdb-mariadb`** :3306).
 
-Does **not** modify `pdb-alignment-pipeline` (production Java init / import dump path unchanged).
+Does **not** modify `pdb-alignment-pipeline` (legacy dump path unchanged on **`pdb-mariadb-old`**).
 
-- **pdb-prepare** (Java fork) → **prepare_inputs.py** → **makeblastdb** → **blastp** → **SQL** → **pdb_new**
+- **pdb-prepare** (Java fork) → **prepare_inputs.py** → **makeblastdb** → **blastp** → **SQL** → **pdb_2026**
 
 ## PDB structures (`g2s_pdb/`)
 
@@ -32,7 +32,7 @@ cd g2s
 | **`run.ps1`** | Setup / Chunk / All / Status |
 | `config.ps1` | Paths and BLAST params |
 | **`pdb-prepare/`** | Java Step 1+2 fork (`PdbPrepareMain`) |
-| `resources/pdb_new.sql` | Schema for `pdb_new` only |
+| `resources/pdb_2026.sql` | Schema for `pdb_2026` only |
 | `prepare_inputs.py` | Reference proteome → gene FASTA + SQL |
 | `blast_to_sql.py` | BLAST XML → alignment SQL |
 
@@ -49,8 +49,8 @@ cd g2s
 
 Small test: `$MaxPdbFiles = 10`, `$MaxPdbSeqresLines = 100`, `$MaxGeneChunks = 1` in `config.ps1`.
 
-## Schema (`pdb_new` only)
+## Schema (`pdb_2026` only)
 
 - `seq_entry.SEQUENCE` (TEXT NOT NULL)
 - Wider UniProt/Ensembl VARCHAR
-- Production `pdb` dump + `pdb-alignment-pipeline/src/main/resources/pdb.sql` unchanged
+- Legacy `pdb` dump schema unchanged on **`pdb-mariadb-old`**

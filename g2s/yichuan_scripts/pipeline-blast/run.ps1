@@ -1,6 +1,6 @@
 # G2S BLAST+ pipeline - single entry point (same params as old Java init).
 #
-#   Setup   - prepare sequences, makeblastdb, create pdb_new, import reference IDs
+#   Setup   - prepare sequences, makeblastdb, create pdb_2026, import reference IDs
 #   Chunk   - blastp (outfmt 5) + SQL import for one chunk
 #   All     - every pending chunk (resumable)
 #   Status  - manifest progress

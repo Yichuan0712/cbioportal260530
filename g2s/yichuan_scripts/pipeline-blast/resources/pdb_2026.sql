@@ -1,5 +1,5 @@
 --
--- database `pdb_new` (yichuan_scripts pipeline-blast only; production `pdb` dump unchanged)
+-- database `pdb_2026` (yichuan_scripts pipeline-blast; active DB on pdb-mariadb :3306)
 --
 drop table IF EXISTS pdb_seq_alignment;
 drop table IF EXISTS uniprot_entry;

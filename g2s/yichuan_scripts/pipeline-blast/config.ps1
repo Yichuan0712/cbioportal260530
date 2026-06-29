@@ -37,13 +37,13 @@ $PipelineBlastMaxTargets   = 50
 $PipelineBlastWordSize     = 3
 
 # --- Target MySQL database for NEW build ---
-$PipelineDbName = "pdb_new"
+$PipelineDbName = "pdb_2026"
 $PipelineDbHost = "localhost"
 $PipelineDbUser = "cbio"
 $PipelineDbPass = "cbio"
 $PipelineDbContainer = "pdb-mariadb"
 $PipelineDbRootPass = "root"
-$PipelineSqlSchema   = Join-Path $PipelineRoot "resources/pdb_new.sql"
+$PipelineSqlSchema   = Join-Path $PipelineRoot "resources/pdb_2026.sql"
 
 # --- Small-scale test knobs ---
 $MaxGeneChunks = 0
