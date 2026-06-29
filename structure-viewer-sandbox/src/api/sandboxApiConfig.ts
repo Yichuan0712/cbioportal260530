@@ -45,6 +45,10 @@ export const CBIOPORTAL_STUDY_IDS: string[] = (
     .map(s => s.trim())
     .filter(Boolean);
 
+/** Default case set on official SOX9 mutations URL (profileFilter=mutations,...). */
+export const CBIOPORTAL_CASE_SET_ID =
+    import.meta.env.VITE_CBIOPORTAL_CASE_SET || 'msk_impact_50k_2026_cnaseq';
+
 /** Fallback when CBIOPORTAL_STUDY_IDS is empty. */
 export const CBIOPORTAL_MUTATION_PROFILE_IDS: string[] = (
     import.meta.env.VITE_CBIOPORTAL_MUTATION_PROFILES ||

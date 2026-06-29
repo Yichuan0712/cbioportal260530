@@ -2,6 +2,7 @@ import _ from 'lodash';
 import { Gene, Mutation, Sample } from 'cbioportal-ts-api-client';
 import {
     CBIOPORTAL_API_BASE,
+    CBIOPORTAL_CASE_SET_ID,
     CBIOPORTAL_MUTATION_PROFILE_IDS,
     CBIOPORTAL_STUDY_IDS,
 } from './sandboxApiConfig';
@@ -73,13 +74,18 @@ export async function resolveMutationProfileIdsForStudies(
 }
 
 export async function fetchSamplesForStudies(
-    studyIds: string[] = CBIOPORTAL_STUDY_IDS
+    studyIds: string[] = CBIOPORTAL_STUDY_IDS,
+    sampleListId: string = CBIOPORTAL_CASE_SET_ID
 ): Promise<Sample[]> {
     if (studyIds.length === 0) {
         return [];
     }
 
-    const sampleListIds = studyIds.map(studyId => `${studyId}_all`);
+    const sampleListIds = studyIds.map(studyId =>
+        sampleListId && sampleListId !== 'all'
+            ? sampleListId
+            : `${studyId}_all`
+    );
     const url = `${CBIOPORTAL_API_BASE}/api/samples/fetch?projection=SUMMARY`;
 
     return parseJson<Sample[]>(
@@ -89,14 +95,38 @@ export async function fetchSamplesForStudies(
                 Accept: 'application/json',
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ sampleListIds }),
+            body: JSON.stringify({ sampleListIds: _.uniq(sampleListIds) }),
+        })
+    );
+}
+
+async function fetchMutationsInProfile(
+    molecularProfileId: string,
+    entrezGeneId: number,
+    sampleListId?: string
+): Promise<Mutation[]> {
+    const url = `${CBIOPORTAL_API_BASE}/api/molecular-profiles/${encodeURIComponent(molecularProfileId)}/mutations/fetch?projection=DETAILED`;
+    const filter: Record<string, unknown> = { entrezGeneIds: [entrezGeneId] };
+    if (sampleListId) {
+        filter.sampleListId = sampleListId;
+    }
+
+    return parseJson<Mutation[]>(
+        await fetch(url, {
+            method: 'POST',
+            headers: {
+                Accept: 'application/json',
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(filter),
         })
     );
 }
 
 export async function fetchMutationsForGene(
     entrezGeneId: number,
-    molecularProfileIds?: string[]
+    molecularProfileIds?: string[],
+    sampleListId: string = CBIOPORTAL_CASE_SET_ID
 ): Promise<Mutation[]> {
     const profileIds =
         molecularProfileIds ??
@@ -106,18 +136,14 @@ export async function fetchMutationsForGene(
         return [];
     }
 
-    const url = `${CBIOPORTAL_API_BASE}/api/mutations/fetch?projection=DETAILED`;
-    return parseJson<Mutation[]>(
-        await fetch(url, {
-            method: 'POST',
-            headers: {
-                Accept: 'application/json',
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                entrezGeneIds: [entrezGeneId],
-                molecularProfileIds: profileIds,
-            }),
-        })
+    const results = await Promise.all(
+        profileIds.map(profileId =>
+            fetchMutationsInProfile(profileId, entrezGeneId, sampleListId)
+        )
+    );
+
+    return _.uniqBy(
+        results.flat(),
+        m => m.uniqueSampleKey + (m.proteinChange || '') + m.startPosition
     );
 }

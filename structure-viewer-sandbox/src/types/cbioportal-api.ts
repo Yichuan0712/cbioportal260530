@@ -15,6 +15,7 @@ export interface Sample {
     sampleId: string;
     studyId: string;
     patientId?: string;
+    uniqueSampleKey?: string;
 }
 
 export interface Mutation {

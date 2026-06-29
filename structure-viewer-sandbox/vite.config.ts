@@ -99,6 +99,12 @@ export default defineConfig({
                 secure: true,
                 rewrite: path => path.replace(/^\/uniprot-api/, ''),
             },
+            '/oncokb-api': {
+                target: 'https://public.api.oncokb.org/api/v1',
+                changeOrigin: true,
+                secure: true,
+                rewrite: path => path.replace(/^\/oncokb-api/, ''),
+            },
         },
     },
 });

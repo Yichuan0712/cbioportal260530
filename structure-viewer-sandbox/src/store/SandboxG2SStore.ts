@@ -18,6 +18,12 @@ import { fetchAlignmentsByEnsembl } from '../api/g2sApi';
 import { fetchCanonicalTranscriptByHugoSymbol } from '../api/genomeNexusApi';
 import { fetchUniprotEntryNameForGene } from '../api/geneAnnotationApi';
 import { fetchGeneByHugoSymbol, fetchMutationsForGene, fetchMutationMolecularProfilesForStudies, fetchSamplesForStudies } from '../api/cbioportalApi';
+import { fetchSampleClinicalMap } from '../api/clinicalDataApi';
+import { buildOncoKbIndicatorMap } from '../api/oncokbApi';
+import {
+    fetchStructuralVariantsForGene,
+    structuralVariantToMutation,
+} from '../api/structuralVariantApi';
 import { fetchVariantAnnotationsIndexedByGenomicLocation } from '../api/variantAnnotationApi';
 import { fetchHotspotIndexForMutations } from '../api/hotspotApi';
 import {
@@ -27,6 +33,7 @@ import {
 } from '../api/mutationUtils';
 import {
     annotateMutationsWithPutativeDriver,
+    annotateStructuralVariantsWithPutativeDriver,
     isPutativeDriverMutation,
 } from '../lib/putativeDriverUtils';
 import { somaticMutationRate } from '../lib/mutationRateUtils';
@@ -193,46 +200,117 @@ export default class SandboxG2SStore {
         gene: Awaited<ReturnType<typeof fetchGeneByHugoSymbol>>,
         _uniprotId: string
     ) {
-        const [rawMutations, molecularProfiles, cohortSamples] =
-            await Promise.all([
-                fetchMutationsForGene(gene.entrezGeneId),
-                fetchMutationMolecularProfilesForStudies(CBIOPORTAL_STUDY_IDS),
-                fetchSamplesForStudies(CBIOPORTAL_STUDY_IDS),
-            ]);
+        const [
+            rawMutations,
+            structuralVariants,
+            molecularProfiles,
+            cohortSamples,
+        ] = await Promise.all([
+            fetchMutationsForGene(gene.entrezGeneId),
+            fetchStructuralVariantsForGene(gene.entrezGeneId),
+            fetchMutationMolecularProfilesForStudies(CBIOPORTAL_STUDY_IDS),
+            fetchSamplesForStudies(CBIOPORTAL_STUDY_IDS),
+        ]);
+
+        const cohortSampleKeys = new Set(
+            cohortSamples.map(
+                sample =>
+                    sample.uniqueSampleKey ||
+                    `${sample.studyId}_${sample.sampleId}`
+            )
+        );
+        const pointMutations = rawMutations.filter(mutation =>
+            cohortSampleKeys.has(mutation.uniqueSampleKey)
+        );
+        const geneStructuralVariants = structuralVariants.filter(sv =>
+            cohortSampleKeys.has(sv.uniqueSampleKey)
+        );
+
+        const sampleIds = _.uniq([
+            ...pointMutations.map(mutation => mutation.sampleId),
+            ...geneStructuralVariants.map(sv => sv.sampleId),
+        ]);
+
+        const clinicalBySample = await fetchSampleClinicalMap(sampleIds);
 
         let indexedVariantAnnotations: {
             [genomicLocation: string]: VariantAnnotation;
         } = {};
         let hotspotIndex = {};
+        let oncokbIndicatorMap = {};
+
         try {
-            [indexedVariantAnnotations, hotspotIndex] = await Promise.all([
-                fetchVariantAnnotationsIndexedByGenomicLocation(rawMutations),
-                fetchHotspotIndexForMutations(rawMutations),
-            ]);
+            [indexedVariantAnnotations, hotspotIndex, oncokbIndicatorMap] =
+                await Promise.all([
+                    fetchVariantAnnotationsIndexedByGenomicLocation(
+                        pointMutations
+                    ),
+                    fetchHotspotIndexForMutations(pointMutations),
+                    buildOncoKbIndicatorMap(
+                        pointMutations,
+                        geneStructuralVariants,
+                        clinicalBySample
+                    ),
+                ]);
         } catch (error) {
             console.warn('Mutation annotation fetch failed:', error);
             try {
                 indexedVariantAnnotations =
                     await fetchVariantAnnotationsIndexedByGenomicLocation(
-                        rawMutations
+                        pointMutations
                     );
             } catch (innerError) {
                 console.warn('Variant annotation fetch failed:', innerError);
             }
             try {
                 hotspotIndex = await fetchHotspotIndexForMutations(
-                    rawMutations
+                    pointMutations
                 );
             } catch (innerError) {
                 console.warn('Hotspot annotation fetch failed:', innerError);
             }
+            try {
+                oncokbIndicatorMap = await buildOncoKbIndicatorMap(
+                    pointMutations,
+                    geneStructuralVariants,
+                    clinicalBySample
+                );
+            } catch (innerError) {
+                console.warn('OncoKB annotation fetch failed:', innerError);
+            }
         }
 
-        const annotatedMutations = annotateMutationsWithPutativeDriver(
-            rawMutations,
+        const driverOptions = {
             indexedVariantAnnotations,
-            hotspotIndex
+            hotspotIndex,
+            oncokbIndicatorMap,
+            clinicalBySample,
+        };
+
+        const annotatedPointMutations = annotateMutationsWithPutativeDriver(
+            pointMutations,
+            indexedVariantAnnotations,
+            hotspotIndex,
+            driverOptions
         );
+
+        const svMutations = geneStructuralVariants.map(sv =>
+            structuralVariantToMutation(
+                sv,
+                gene.hugoGeneSymbol,
+                gene.entrezGeneId
+            )
+        );
+        const annotatedSvMutations = annotateStructuralVariantsWithPutativeDriver(
+            geneStructuralVariants,
+            svMutations,
+            driverOptions
+        );
+
+        const annotatedMutations = [
+            ...annotatedPointMutations,
+            ...annotatedSvMutations,
+        ];
 
         const chain =
             this.pdbChainDataStore.selectedChain ||

@@ -5,14 +5,19 @@ import {
     extractGenomicLocation,
     genomicLocationString,
 } from './genomicLocationUtils';
+import {
+    getMutationOncoKbIndicatorId,
+    getOncoKbOncogenicFromIndicator,
+    getStructuralVariantOncoKbIndicatorId,
+    ONCOKB_ONCOGENIC_LOWERCASE,
+    OncoKbIndicatorMap,
+} from '../api/oncokbApi';
+import { SampleClinicalMap } from '../api/clinicalDataApi';
+import { StructuralVariant } from '../api/structuralVariantApi';
 
 export const PUTATIVE_DRIVER = 'Putative_Driver';
 
-export const ONCOKB_ONCOGENIC_LOWERCASE = [
-    'likely oncogenic',
-    'oncogenic',
-    'resistance',
-];
+export { ONCOKB_ONCOGENIC_LOWERCASE } from '../api/oncokbApi';
 
 export interface PutativeDriverInfo {
     oncoKb: string;
@@ -25,13 +30,11 @@ export interface SandboxDriverAnnotationSettings {
     oncoKb?: boolean;
     hotspots?: boolean;
     customBinary?: boolean;
-    /** When true, MSK-style driverTiersFilter counts as putative driver (official default tiers on). */
     customTiers?: boolean;
 }
 
 const DEFAULT_DRIVER_SETTINGS: Required<SandboxDriverAnnotationSettings> = {
-    // Results View uses OncoKB indicator map (tumor-type keyed); GN oncokb field is not equivalent.
-    oncoKb: false,
+    oncoKb: true,
     hotspots: true,
     customBinary: true,
     customTiers: false,
@@ -78,12 +81,31 @@ export function evaluatePutativeDriverInfo(
     mutation: Partial<Mutation>,
     annotation: VariantAnnotation | undefined,
     hotspotIndex: IHotspotIndex,
-    settings: SandboxDriverAnnotationSettings = DEFAULT_DRIVER_SETTINGS
+    settings: SandboxDriverAnnotationSettings = DEFAULT_DRIVER_SETTINGS,
+    oncokbIndicatorMap?: OncoKbIndicatorMap,
+    clinicalBySample?: SampleClinicalMap,
+    structuralVariant?: StructuralVariant
 ): PutativeDriverInfo {
     const resolved = { ...DEFAULT_DRIVER_SETTINGS, ...settings };
-    const oncoKb = resolved.oncoKb
-        ? getOncoKbOncogenicFromAnnotation(annotation)
-        : '';
+    let oncoKb = '';
+
+    if (resolved.oncoKb && oncokbIndicatorMap && clinicalBySample) {
+        const indicatorId = structuralVariant
+            ? getStructuralVariantOncoKbIndicatorId(
+                  structuralVariant,
+                  clinicalBySample
+              )
+            : getMutationOncoKbIndicatorId(
+                  mutation as Mutation,
+                  clinicalBySample
+              );
+        oncoKb = getOncoKbOncogenicFromIndicator(
+            oncokbIndicatorMap[indicatorId]
+        );
+    } else if (resolved.oncoKb) {
+        oncoKb = getOncoKbOncogenicFromAnnotation(annotation);
+    }
+
     const hotspots =
         resolved.hotspots &&
         isLinearClusterHotspot(mutation as Mutation, hotspotIndex);
@@ -120,26 +142,73 @@ export function annotateMutationPutativeDriver(
     } as Mutation;
 }
 
+export interface AnnotateMutationsOptions {
+    indexedVariantAnnotations?: {
+        [genomicLocation: string]: VariantAnnotation;
+    };
+    hotspotIndex?: IHotspotIndex;
+    settings?: SandboxDriverAnnotationSettings;
+    oncokbIndicatorMap?: OncoKbIndicatorMap;
+    clinicalBySample?: SampleClinicalMap;
+}
+
 export function annotateMutationsWithPutativeDriver(
     mutations: Mutation[],
     indexedVariantAnnotations: {
         [genomicLocation: string]: VariantAnnotation;
-    },
+    } = {},
     hotspotIndex: IHotspotIndex = {},
-    settings?: SandboxDriverAnnotationSettings
+    settingsOrOptions?: SandboxDriverAnnotationSettings | AnnotateMutationsOptions
 ): Mutation[] {
+    const options: AnnotateMutationsOptions =
+        settingsOrOptions && 'oncokbIndicatorMap' in settingsOrOptions
+            ? settingsOrOptions
+            : {
+                  settings: settingsOrOptions as SandboxDriverAnnotationSettings,
+              };
+
+    const annotations =
+        options.indexedVariantAnnotations ?? indexedVariantAnnotations;
+    const hotspots = options.hotspotIndex ?? hotspotIndex;
+
     return mutations.map(mutation => {
         const annotation = getVariantAnnotationForMutation(
             mutation,
-            indexedVariantAnnotations
+            annotations
         );
         const info = evaluatePutativeDriverInfo(
             mutation,
             annotation,
-            hotspotIndex,
-            settings
+            hotspots,
+            options.settings,
+            options.oncokbIndicatorMap,
+            options.clinicalBySample
         );
 
+        return annotateMutationPutativeDriver(mutation, info);
+    });
+}
+
+export function annotateStructuralVariantsWithPutativeDriver(
+    structuralVariants: StructuralVariant[],
+    mutations: Mutation[],
+    options: AnnotateMutationsOptions
+): Mutation[] {
+    return mutations.map((mutation, index) => {
+        const sv = structuralVariants[index];
+        const annotation = getVariantAnnotationForMutation(
+            mutation,
+            options.indexedVariantAnnotations
+        );
+        const info = evaluatePutativeDriverInfo(
+            mutation,
+            annotation,
+            options.hotspotIndex || {},
+            options.settings,
+            options.oncokbIndicatorMap,
+            options.clinicalBySample,
+            sv
+        );
         return annotateMutationPutativeDriver(mutation, info);
     });
 }
