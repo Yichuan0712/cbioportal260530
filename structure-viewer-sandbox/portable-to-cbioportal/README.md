@@ -1,40 +1,37 @@
-# 可直接拷回 cBioPortal 的代码
+# Deploy structure viewer into cBioPortal
 
-**只改这个文件夹里的文件。** 沙箱 demo（`App.tsx`、mock、按钮布局等）不要拷回主项目。
+Edit **only** files under `structureViewer/` here. Sandbox demo code (`App.tsx`, mocks, meta column) stays in `structure-viewer-sandbox/` and is **not** copied to the main app.
 
-## 目录对应关系
+---
+
+## What gets deployed
 
 ```
 portable-to-cbioportal/structureViewer/
-    ↓ 整文件夹覆盖
-cbioportal-frontend/src/shared/components/structureViewer/
+    →  cbioportal-frontend/src/shared/components/structureViewer/
 ```
 
-## 与官方保持一致
+---
 
-`structureViewer/` 内 7 个核心文件应与  
-`cbioportal-frontend/src/shared/components/structureViewer/` **逐字相同**（不含 `*.spec.ts`）。
+## Step 1 — Sync from upstream (optional)
 
-从官方刷新 portable（开发前或怀疑 drift 时）：
+Refresh portable files from the current `cbioportal-frontend` tree before you merge your changes:
 
 ```powershell
+# from repo root
 .\structure-viewer-sandbox\portable-to-cbioportal\sync-from-official.ps1
 ```
 
-沙箱专用、**不拷回**主项目：
+---
 
-- `../PdbChainInfo` → `portable-to-cbioportal/PdbChainInfo.tsx`（re-export）
-- `vite.config.ts` 注入 `$borderColor` / `$cornerBorderRadius`（与官方 `variables.scss` 一致）
-
-## 一键同步到主项目（Windows）
-
-在仓库根目录执行：
+## Step 2 — Copy into cBioPortal frontend
 
 ```powershell
+# from repo root
 .\structure-viewer-sandbox\portable-to-cbioportal\copy-back.ps1
 ```
 
-或手动复制：
+Manual equivalent:
 
 ```powershell
 Copy-Item -Recurse -Force `
@@ -42,36 +39,45 @@ Copy-Item -Recurse -Force `
   cbioportal-frontend\src\shared\components\structureViewer\
 ```
 
-## 包含文件
+---
 
-| 文件 | 说明 |
-|------|------|
-| `StructureViewerPanel.tsx` | 3D 浮层面板 UI |
-| `StructureViewer.tsx` | React 容器 |
-| `StructureVisualizer3D.ts` | 3Dmol 渲染 |
-| `StructureVisualizer.ts` | 样式枚举与基类 |
-| `PyMolScriptGenerator.ts` | PyMol 脚本导出 |
-| `PdbResidueUtils.ts` | 残基映射工具 |
-| `structureViewer.module.scss` | 面板样式 |
+## Step 3 — Run cBioPortal frontend
 
-## 拷回后请在主项目验证
+From `cbioportal-frontend/` (see that repo’s README for full setup):
 
-1. 启动 cBioPortal frontend（`:3000`）
-2. 打开 Mutation Mapper → **View 3D Structure**
-3. 确认 G2S / PDB 数据仍正常（沙箱 mock 不会一起过去）
+```bash
+corepack enable
+pnpm install --frozen-lockfile
+pnpm run buildModules
+pnpm run start
+```
 
-## copy-back 之外的一处接线（3D 突变 label 详情）
+Open **http://localhost:3000**, go to Results → Mutations → **View 3D Structure**, and confirm PDB / AlphaFold / labels.
 
-Genome Nexus 富文本（HGVSp、SIFT、PolyPhen 等）需要 Mutation Mapper **传入**已有注释，Panel 不会自己请求。
+---
 
-详见 **[INTEGRATION.md](./INTEGRATION.md)**。  
-主项目文件：`cbioportal-frontend/src/shared/components/mutationMapper/MutationMapper.tsx` → `structureViewerPanel` → `indexedVariantAnnotations={this.props.store.indexedVariantAnnotations.result}`。
+## One host wiring step (Genome Nexus label details)
 
-参考快照（不随 copy-back 部署）：`portable-to-cbioportal/reference/MutationMapper.tsx`。
+`copy-back.ps1` does **not** update `MutationMapper.tsx`. For rich 3D mutation labels (HGVSp, SIFT, PolyPhen, …), pass existing annotations into the panel:
 
-## 不要拷回的内容
+```tsx
+indexedVariantAnnotations={
+    this.props.store.indexedVariantAnnotations.result
+}
+```
 
-- `structure-viewer-sandbox/src/App.tsx` — demo 页面
-- `structure-viewer-sandbox/src/mocks/` — 假数据
-- `structure-viewer-sandbox/src/shared/cache/` — mock 缓存
-- `structure-viewer-sandbox/src/commons/` — 精简 stub
+Add that prop on `<StructureViewerPanel />` in  
+`cbioportal-frontend/src/shared/components/mutationMapper/MutationMapper.tsx`.
+
+Full notes and a reference snapshot: **[INTEGRATION.md](./INTEGRATION.md)** (`reference/MutationMapper.tsx`).
+
+---
+
+## Not deployed by copy-back
+
+| Path | Reason |
+|------|--------|
+| `structure-viewer-sandbox/src/` | Sandbox shell and demo UI |
+| `portable-to-cbioportal/PdbChainInfo.tsx` | Sandbox re-export only |
+| `portable-to-cbioportal/reference/` | Merge reference, not runtime code |
+| `vite.config.ts` SCSS inject | Sandbox build workaround |
