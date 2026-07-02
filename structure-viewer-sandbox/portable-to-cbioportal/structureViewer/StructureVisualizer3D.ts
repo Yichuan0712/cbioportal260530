@@ -104,6 +104,8 @@ export default class StructureVisualizer3D extends StructureVisualizer {
     private _hoveredChain: string | null = null;
     private _hoverPickReady = false;
     private _clickPickReady = false;
+    private _registeredHoverChainId: string | null = null;
+    private _registeredClickChainId: string | null = null;
     private _backgroundClickListenerAttached = false;
     private _boundBackgroundMouseUp: ((ev: MouseEvent) => void) | null = null;
     private _appliedPin: { chain: string; resi: number } | null = null;
@@ -878,19 +880,69 @@ export default class StructureVisualizer3D extends StructureVisualizer {
         this.syncResidueHighlights(forceReapply);
     }
 
-    private ensureClickPickTargets(): void {
+    /** Selected chain only — semi-transparent (non-selected) chains are not pickable. */
+    private getChainPickSelector(): { chain?: string } {
+        const chainId = this.state.chainId;
+        return chainId && chainId.length > 0 ? { chain: chainId } : {};
+    }
+
+    private clearClickPickRegistration(): void {
         if (
             !this._3dMolViewer ||
-            this._clickPickReady ||
             typeof this._3dMolViewer.setClickable !== 'function'
         ) {
             return;
         }
 
-        this._3dMolViewer.setClickable({}, true, (atom: {
+        if (this._registeredClickChainId) {
+            this._3dMolViewer.setClickable(
+                { chain: this._registeredClickChainId },
+                false
+            );
+        }
+        // Clear legacy all-atom registration from earlier builds.
+        this._3dMolViewer.setClickable({}, false);
+    }
+
+    private clearHoverPickRegistration(): void {
+        if (
+            !this._3dMolViewer ||
+            typeof this._3dMolViewer.setHoverable !== 'function'
+        ) {
+            return;
+        }
+
+        if (this._registeredHoverChainId) {
+            this._3dMolViewer.setHoverable(
+                { chain: this._registeredHoverChainId },
+                false
+            );
+        }
+        this._3dMolViewer.setHoverable({}, false);
+    }
+
+    private ensureClickPickTargets(): void {
+        if (
+            !this._3dMolViewer ||
+            typeof this._3dMolViewer.setClickable !== 'function'
+        ) {
+            return;
+        }
+
+        const chainId = this.state.chainId || '';
+        if (this._clickPickReady && this._registeredClickChainId === chainId) {
+            this.ensureBackgroundClickListener();
+            return;
+        }
+
+        this.clearClickPickRegistration();
+
+        const clickSel = this.getChainPickSelector();
+        this._3dMolViewer.setClickable(clickSel, true, (atom: {
             chain?: string;
             resi?: number;
         }) => this.handleResidueClick(atom));
+        this._registeredClickChainId = chainId || null;
         this._clickPickReady = true;
         this.ensureBackgroundClickListener();
     }
@@ -979,6 +1031,8 @@ export default class StructureVisualizer3D extends StructureVisualizer {
         this._hoveredChain = null;
         this._hoverPickReady = false;
         this._clickPickReady = false;
+        this._registeredHoverChainId = null;
+        this._registeredClickChainId = null;
         this.removeBackgroundClickListener();
         this._appliedPin = null;
         this._appliedPaePair = null;
@@ -1005,7 +1059,6 @@ export default class StructureVisualizer3D extends StructureVisualizer {
     private ensureHoverPickTargets(): void {
         if (
             !this._3dMolViewer ||
-            this._hoverPickReady ||
             typeof this._3dMolViewer.setHoverable !== 'function'
         ) {
             return;
@@ -1013,14 +1066,18 @@ export default class StructureVisualizer3D extends StructureVisualizer {
 
         this.ensureClickPickTargets();
 
+        const chainId = this.state.chainId || '';
+        if (this._hoverPickReady && this._registeredHoverChainId === chainId) {
+            return;
+        }
+
+        this.clearHoverPickRegistration();
+
         if (typeof this._3dMolViewer.setHoverDuration === 'function') {
             this._3dMolViewer.setHoverDuration(16);
         }
 
-        const hoverSel =
-            this.state.chainId && this.state.chainId.length > 0
-                ? { chain: this.state.chainId }
-                : {};
+        const hoverSel = this.getChainPickSelector();
 
         this._3dMolViewer.setHoverable(
             hoverSel,
@@ -1031,6 +1088,7 @@ export default class StructureVisualizer3D extends StructureVisualizer {
                 this.handleResidueUnhover(atom)
         );
 
+        this._registeredHoverChainId = chainId || null;
         this._hoverPickReady = true;
     }
 
@@ -1238,6 +1296,14 @@ export default class StructureVisualizer3D extends StructureVisualizer {
 
     private handleResidueClick(atom: { chain?: string; resi?: number }) {
         if (!atom || atom.resi == null || !atom.chain) {
+            return;
+        }
+
+        const chainId = this.state.chainId;
+        if (
+            chainId &&
+            atom.chain.toUpperCase() !== chainId.toUpperCase()
+        ) {
             return;
         }
 
