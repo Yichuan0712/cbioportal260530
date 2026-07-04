@@ -4,19 +4,25 @@
 #   Chunk   - blastp (outfmt 5) + SQL import for one chunk
 #   All     - every pending chunk (resumable)
 #   Status  - manifest progress
+#   Update  - incremental weekly refresh (like the legacy Java "update" command,
+#             but against pdb_2026): refresh g2s_pdb/ from RCSB, diff the
+#             regenerated pdb_seqres.fasta against last run, blast only the
+#             added/modified PDB chains against the existing gene chunks, and
+#             delete stale rows for modified/removed ones first.
 #
 # Requires NCBI BLAST+ on PATH (see README - g2s/tools/ncbi-blast).
 
 param(
     [Parameter(Mandatory = $true, Position = 0)]
-    [ValidateSet("Setup", "Chunk", "All", "Status")]
+    [ValidateSet("Setup", "Chunk", "All", "Status", "Update")]
     [string]$Action,
 
     [int]$ChunkIndex = -1,
     [int]$MaxChunks = 0,
     [switch]$Force,
     [switch]$DropDb,
-    [switch]$SkipImport
+    [switch]$SkipImport,
+    [switch]$SkipRsync
 )
 
 $ErrorActionPreference = "Stop"
@@ -70,6 +76,8 @@ function Get-ChunkXml($chunk) {
 }
 
 function Invoke-PreparePdb {
+    param([switch]$ForceRegenerate)
+
     if (-not (Test-Path $PipelinePdbRepo)) {
         throw @"
 Missing PDB repo directory: $PipelinePdbRepo
@@ -94,7 +102,7 @@ Download PDB .pdb.gz structure files before running Setup.
         $execArgLine += " --max-files $MaxPdbFiles"
     }
 
-    if ((Test-Path $PipelinePdbSeqresFasta) -and -not $Force) {
+    if ((Test-Path $PipelinePdbSeqresFasta) -and -not $Force -and -not $ForceRegenerate) {
         $existing = Get-Item $PipelinePdbSeqresFasta
         if ($existing.Length -gt 50MB) {
             Write-Host "[prepare-pdb] Skip - existing FASTA ($([math]::Round($existing.Length/1GB,2)) GB): $PipelinePdbSeqresFasta"
@@ -136,7 +144,7 @@ function Invoke-Prepare {
     if ($MaxPdbSeqresLines -gt 0) { $pyArgs += @("--max-pdb-seqres-lines", $MaxPdbSeqresLines) }
 
     Write-Host "[prepare] Running prepare_inputs.py ..."
-    python @pyArgs
+    & $PipelinePythonExe @pyArgs
     if ($LASTEXITCODE -ne 0) { throw "prepare_inputs.py failed" }
 }
 
@@ -308,7 +316,7 @@ function Invoke-ImportChunk {
 
     $converter = Join-Path $PipelineRoot "blast_to_sql.py"
     Write-Host "[import] Converting BLAST XML -> SQL for chunk $Index ..."
-    & python $converter --xml $xmlPath --sql $chunk.sql
+    & $PipelinePythonExe $converter --xml $xmlPath --sql $chunk.sql
     if ($LASTEXITCODE -ne 0) { throw "blast_to_sql.py failed for chunk $Index" }
 
     if ($SkipDbImport) {
@@ -330,6 +338,164 @@ function Invoke-ImportChunk {
     }
     Save-Manifest $raw
     Write-Host "[import] Chunk $Index import_done."
+}
+
+function Invoke-RsyncPdbMirror {
+    if ($SkipRsync) {
+        Write-Host "[update] -SkipRsync: not refreshing g2s_pdb/ (make sure it's already current)"
+        return
+    }
+    if (-not (Get-Command rsync -ErrorAction SilentlyContinue)) {
+        Write-Host "[update] rsync not found on PATH - skipping mirror refresh (g2s_pdb/ may be stale; pass -SkipRsync to silence this warning)"
+        return
+    }
+    New-Item -ItemType Directory -Path $PipelinePdbRepo -Force | Out-Null
+    Write-Host "[update] rsync g2s_pdb/ <- $PipelineRsyncSource (port $PipelineRsyncPort) ..."
+    & rsync -rlpt -z --delete --port=$PipelineRsyncPort $PipelineRsyncSource "$PipelinePdbRepo/"
+    if ($LASTEXITCODE -ne 0) { throw "rsync mirror refresh failed (exit $LASTEXITCODE)" }
+}
+
+function Invoke-RecordUpdate {
+    param([int]$SegNum, [int]$PdbNum, [int]$AlignmentNum)
+    $sql = "INSERT INTO ``update_record`` (``UPDATE_DATE``,``SEG_NUM``,``PDB_NUM``,``ALIGNMENT_NUM``) VALUES (CURDATE(), $SegNum, $PdbNum, $AlignmentNum);"
+    $sql | docker exec -i -e "MYSQL_PWD=$PipelineDbPass" $PipelineDbContainer mysql -u $PipelineDbUser $PipelineDbName
+    if ($LASTEXITCODE -ne 0) { throw "update_record insert failed" }
+}
+
+function Invoke-UpdateBlastChunk {
+    param([int]$Index, [string]$QueryFasta, [string]$DeltaDb, [string]$UpdateDir)
+
+    $xmlOut = Join-Path $UpdateDir "chunk-$Index.xml"
+    Write-Host "[update] blastp chunk $Index against delta DB ..."
+    if ($PipelineUseDockerBlast) {
+        $mountRoot = Get-DockerPath $PipelineWorkspace
+        $dbIn = Get-WorkdirDockerPath $DeltaDb
+        $queryIn = Get-WorkdirDockerPath $QueryFasta
+        $xmlIn = Get-WorkdirDockerPath $xmlOut
+        docker run --rm -v "${mountRoot}:/workdir" $PipelineBlastDockerImage blastp `
+            -db $dbIn `
+            -query $queryIn `
+            -word_size $PipelineBlastWordSize `
+            -evalue $PipelineBlastEvalue `
+            -max_target_seqs $PipelineBlastMaxTargets `
+            -num_threads $PipelineBlastThreads `
+            -outfmt 5 `
+            -out $xmlIn
+    } else {
+        Assert-BlastTools
+        & blastp `
+            -db $DeltaDb `
+            -query $QueryFasta `
+            -word_size $PipelineBlastWordSize `
+            -evalue $PipelineBlastEvalue `
+            -max_target_seqs $PipelineBlastMaxTargets `
+            -num_threads $PipelineBlastThreads `
+            -outfmt 5 `
+            -out $xmlOut
+    }
+    if ($LASTEXITCODE -ne 0) { throw "blastp failed for update chunk $Index" }
+    return $xmlOut
+}
+
+function Invoke-Update {
+    Assert-DockerMysql
+    if (-not (Test-Path $PipelineManifest)) {
+        throw "Missing manifest at $PipelineManifest - run Setup first (Update reuses its gene chunks)"
+    }
+    $manifest = Get-Manifest
+
+    $updateStamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    $updateDir = Join-Path $PipelineUpdatesDir $updateStamp
+    New-Item -ItemType Directory -Path $updateDir -Force | Out-Null
+
+    # Step 1: refresh the local PDB mirror from RCSB
+    Invoke-RsyncPdbMirror
+
+    # Step 2: regenerate the FULL segmented FASTA from the (now current) mirror
+    Invoke-PreparePdb -ForceRegenerate
+
+    # Step 3: diff against last run's snapshot to classify added/modified/removed
+    $deltaFasta = Join-Path $updateDir "delta.fasta"
+    $deleteIds = Join-Path $updateDir "delete_ids.txt"
+    $diffScript = Join-Path $PipelineRoot "diff_pdb_seqres.py"
+    Write-Host "[update] Diffing against $PipelinePdbSeqresPrevious ..."
+    $diffOutput = & $PipelinePythonExe $diffScript --old-snapshot $PipelinePdbSeqresPrevious --new $PipelinePdbSeqresFasta --delta-fasta $deltaFasta --delete-ids $deleteIds
+    if ($LASTEXITCODE -ne 0) { throw "diff_pdb_seqres.py failed" }
+    Write-Host "[update] $diffOutput"
+    if ($diffOutput -notmatch '^added=(\d+) modified=(\d+) removed=(\d+)$') {
+        throw "Unexpected diff_pdb_seqres.py output: $diffOutput"
+    }
+    $addedCount = [int]$Matches[1]
+    $modifiedCount = [int]$Matches[2]
+    $removedCount = [int]$Matches[3]
+
+    if ($addedCount -eq 0 -and $modifiedCount -eq 0 -and $removedCount -eq 0) {
+        Write-Host "[update] No changes since last run - nothing to do."
+        Copy-Item $PipelinePdbSeqresFasta $PipelinePdbSeqresPrevious -Force
+        return
+    }
+
+    # Step 4: delete stale rows for modified/removed PDB_NOs before importing fresh ones.
+    # Order matters: pdb_seq_alignment.PDB_NO has a FK into pdb_entry.PDB_NO.
+    $deleteList = @(Get-Content $deleteIds -ErrorAction SilentlyContinue | Where-Object { $_.Trim() -ne "" })
+    if ($deleteList.Count -gt 0) {
+        Write-Host "[update] Deleting stale rows for $($deleteList.Count) modified/removed PDB_NO(s) ..."
+        $quoted = ($deleteList | ForEach-Object { "'" + ($_ -replace "'", "''") + "'" }) -join ","
+        $deleteSql = @"
+DELETE FROM ``pdb_seq_alignment`` WHERE ``PDB_NO`` IN ($quoted);
+DELETE FROM ``pdb_entry`` WHERE ``PDB_NO`` IN ($quoted);
+"@
+        $deleteSql | docker exec -i -e "MYSQL_PWD=$PipelineDbPass" $PipelineDbContainer mysql -u $PipelineDbUser $PipelineDbName
+        if ($LASTEXITCODE -ne 0) { throw "Delete of stale PDB rows failed" }
+    }
+
+    if ($addedCount -eq 0 -and $modifiedCount -eq 0) {
+        Write-Host "[update] Only removals - no new BLAST needed."
+        Copy-Item $PipelinePdbSeqresFasta $PipelinePdbSeqresPrevious -Force
+        Invoke-RecordUpdate -SegNum $deleteList.Count -PdbNum 0 -AlignmentNum 0
+        return
+    }
+
+    # Step 5: makeblastdb on just the delta (added + modified) - tiny vs the full DB.
+    # makeblastdb runs natively fine on this machine (unlike blastp - see config.ps1);
+    # matches Invoke-Makedb's existing behavior.
+    $deltaDb = Join-Path $updateDir "delta.db"
+    Write-Host "[update] makeblastdb on delta ($($addedCount + $modifiedCount) sequence(s)) ..."
+    & makeblastdb -in $deltaFasta -dbtype prot -out $deltaDb
+    if ($LASTEXITCODE -ne 0) { throw "makeblastdb failed on delta" }
+
+    # Step 6: blast the EXISTING gene chunks (from Setup - the reference proteome
+    # doesn't change on PDB's weekly cadence) against just the delta DB, import each.
+    $geneFastaBase = $manifest.paths.gene_fasta
+    $totalAlignments = 0
+    for ($i = 0; $i -lt $manifest.chunk_count; $i++) {
+        $queryFasta = "$geneFastaBase.$i"
+        if (-not (Test-Path $queryFasta)) { throw "Missing gene chunk: $queryFasta" }
+        $xmlOut = Invoke-UpdateBlastChunk -Index $i -QueryFasta $queryFasta -DeltaDb $deltaDb -UpdateDir $updateDir
+
+        # Most chunks won't hit the (tiny) delta DB at all - that's expected, skip
+        # blast_to_sql.py/import rather than treating "zero hits" as an error.
+        if (-not (Select-String -Path $xmlOut -Pattern '<Hit>' -Quiet)) {
+            continue
+        }
+
+        $sqlOut = Join-Path $updateDir "chunk-$i.sql"
+        $converter = Join-Path $PipelineRoot "blast_to_sql.py"
+        & $PipelinePythonExe $converter --xml $xmlOut --sql $sqlOut
+        if ($LASTEXITCODE -ne 0) { throw "blast_to_sql.py failed for update chunk $i" }
+
+        Write-Host "[update] Importing chunk $i ..."
+        Get-Content $sqlOut -Raw | docker exec -i -e "MYSQL_PWD=$PipelineDbPass" $PipelineDbContainer mysql -u $PipelineDbUser $PipelineDbName
+        if ($LASTEXITCODE -ne 0) { throw "MySQL import failed for update chunk $i" }
+        $totalAlignments += (Select-String -Path $sqlOut -Pattern 'INSERT INTO `pdb_seq_alignment`').Count
+    }
+
+    # Step 7: log the run, save the new snapshot for next time's diff
+    Invoke-RecordUpdate -SegNum ($addedCount + $modifiedCount + $removedCount) -PdbNum ($addedCount + $modifiedCount) -AlignmentNum $totalAlignments
+    Copy-Item $PipelinePdbSeqresFasta $PipelinePdbSeqresPrevious -Force
+
+    Write-Host ""
+    Write-Host "Update complete: added=$addedCount modified=$modifiedCount removed=$removedCount, $totalAlignments new alignment row(s)."
 }
 
 function Invoke-Status {
@@ -400,5 +566,8 @@ switch ($Action) {
     }
     "Status" {
         Invoke-Status
+    }
+    "Update" {
+        Invoke-Update
     }
 }
