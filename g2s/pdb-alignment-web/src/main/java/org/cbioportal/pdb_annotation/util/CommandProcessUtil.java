@@ -1,8 +1,10 @@
 package org.cbioportal.pdb_annotation.util;
 
+import java.io.File;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
+import org.apache.commons.io.FileUtils;
 import org.apache.log4j.Logger;
 import org.cbioportal.pdb_annotation.web.models.InputSequence;
 
@@ -94,9 +96,8 @@ public class CommandProcessUtil {
             break;
         }
         if (!checkFlag) {
-            log.error("[SHELL] Fatal Error: Parameters for " + commandName
-                    + " does not make sense, please check. Now the program is exit");
-            System.exit(0);
+            log.error("[SHELL] Fatal Error: Parameters for " + commandName + " does not make sense, please check.");
+            throw new RuntimeException("[SHELL] Invalid parameters for command " + commandName);
         }
     }
 
@@ -112,16 +113,21 @@ public class CommandProcessUtil {
         int shellReturnCode = 0;
         try {
             checkCommandParam(commandName, paralist);
+
+            if ("rm".equals(commandName)) {
+                // Delete in-process instead of shelling out to a "rm" binary that may
+                // not exist on PATH on Windows.
+                log.info("[SHELL] Deleting " + paralist.get(0));
+                FileUtils.deleteQuietly(new File(paralist.get(0)));
+                return 0;
+            }
+
             ProcessBuilder pb = null;
             switch (commandName) {
             case "blastp":
                 log.info("[BLAST] Running blastp command query " + paralist.get(0) + "...");
                 pb = new ProcessBuilder(
                         makeBlastPCommand(paralist.get(0), paralist.get(1), paralist.get(2), inputsequence));
-                break;
-            case "rm":
-                log.info("[SHELL] Running rm command at" + paralist.get(0) + "...");
-                pb = new ProcessBuilder(makdeRmCommand(paralist.get(0)));
                 break;
             default:
                 log.error("[SHELL] Command " + commandName + " does not support now");
@@ -132,11 +138,13 @@ public class CommandProcessUtil {
             shellReturnCode = pc.exitValue();
             outputProcessError(pc, shellReturnCode, commandName);
             log.info("[SHELL] Command " + commandName + " completed");
+        } catch (RuntimeException ex) {
+            throw ex;
         } catch (Exception ex) {
-            log.error("[SHELL] Fatal Error: Could not Successfully process command, exit the program now");
+            log.error("[SHELL] Fatal Error: Could not successfully process command " + commandName);
             log.error(ex.getMessage());
             ex.printStackTrace();
-            System.exit(0);
+            throw new RuntimeException("[SHELL] Command " + commandName + " failed", ex);
         }
         return shellReturnCode;
     }
@@ -180,20 +188,6 @@ public class CommandProcessUtil {
         list.add("5");
         list.add("-out");
         list.add(outFilename);
-        return list;
-    }
-
-    /**
-     * generate rm command
-     * 
-     * @param inFilename
-     * @return
-     */
-    private List<String> makdeRmCommand(String inFilename) {
-        List<String> list = new ArrayList<String>();
-        list.add("rm");
-        list.add("-fr");
-        list.add(inFilename);
         return list;
     }
 

@@ -1,5 +1,6 @@
 package org.cbioportal.pdb_annotation.util;
 
+import java.io.InputStream;
 import java.util.*;
 import org.apache.log4j.Logger;
 
@@ -57,6 +58,14 @@ public class ReadConfig {
         try {
             Properties prop = new Properties();
             prop.load(CommandProcessUtil.class.getClassLoader().getResourceAsStream("application.properties"));
+
+            // application-local.properties (gitignored, machine-specific) overrides
+            // matching keys above, same file the setup docs tell you to create.
+            InputStream localStream = CommandProcessUtil.class.getClassLoader()
+                    .getResourceAsStream("application-local.properties");
+            if (localStream != null) {
+                prop.load(localStream);
+            }
 
             // Set all constants
             ReadConfig.blastp = prop.getProperty("blastp").trim();

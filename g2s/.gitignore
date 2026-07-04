@@ -61,6 +61,9 @@ mysqldump_*.sql
 mysqldump_*.sql.gz
 import-db.log
 
+# --- Deployment transfer package (large, machine-specific, never commit) ---
+deploy-package/
+
 # --- Runtime logs ---
 logs/
 logs-*.out
