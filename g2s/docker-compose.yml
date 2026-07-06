@@ -32,19 +32,3 @@ services:
       - "27017:27017"
     volumes:
       - ./mongo_data:/data/db
-
-  pdb-app:
-    build: .
-    container_name: g2s-app
-    depends_on:
-      - mysql
-      - mongo
-    environment:
-      JAVA_OPTS: "-Xmx7000m"
-    volumes:
-      - ./workdir:/workdir
-      - ./g2s_pdb:/g2s_pdb
-    ports:
-      - "8081:8081"
-      - "8082:8082"
-      - "5443:5443"

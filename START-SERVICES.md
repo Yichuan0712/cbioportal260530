@@ -1,20 +1,16 @@
 # Start services (daily)
 
-Assumes first-time setup is done — see **`G2S-SETUP.md`**.
-
----
-
 ## 1. G2S (PDB alignments for 3D viewer)
 
 From the **`g2s/`** folder (contains `pom.xml`):
 
 ```powershell
-docker compose up -d mysql mysql-old mongo
+docker compose up -d mysql mongo
 .\yichuan_scripts\start-services.ps1
 ```
 
 Opens three Java windows: API **8081**, PDB **8082**, Web **5443** (HTTPS).  
-Java services use **`pdb_2026`** on **pdb-mariadb :3306** (`local` profile). Legacy **`pdb`** is on **pdb-mariadb-old :3307** (archive only).
+Java services use **`pdb_2026`** on **pdb-mariadb :3306** (`local` profile).
 
 Quick check in the browser:
 
@@ -28,7 +24,7 @@ After changing DB name or JDBC settings, **restart** the three Java windows (`st
 
 8082 has no home page at `/` or `/pdb_annotation/` — use Swagger or a concrete API path (e.g. `/pdb_annotation/header/1p98`).
 
-> **Docker Desktop** must be running. First-time DB import: see `G2S-SETUP.md`.
+> **Docker Desktop** must be running.
 
 ---
 
