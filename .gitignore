@@ -2,6 +2,8 @@
 # (cbioportal/, cbioportal-frontend/, g2s/)
 tools/
 our_goal.md
+.cursor/
+.cursorignore
 
 # Frozen structure-viewer sandbox snapshots (read-only reference; work in structure-viewer-sandbox/)
 structure-viewer-sandbox-v0530/
