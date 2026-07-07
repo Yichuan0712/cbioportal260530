@@ -60,22 +60,23 @@ docker pull ncbi/blast:2.16.0
 
 ### 6. Configure `application-local.properties`
 
-Create `pdb-alignment-web/src/main/resources/application-local.properties`
-(gitignored, machine-specific — same convention as the Windows dev box):
+This file is gitignored, so it won't exist after `git clone` — create it yourself:
 
+`pdb-alignment-web/src/main/resources/application-local.properties`
 ```properties
 spring.datasource.url=jdbc:mysql://localhost:3306/pdb_2026?useSSL=false
 
 workspace=/opt/g2s/workdir/
 uploaddir=/opt/g2s/tmp/upload
 
-# blastp runs inside the ncbi/blast Docker image - see yichuan_scripts/blastp-docker.sh.
 blastp=/opt/g2s/yichuan_scripts/blastp-docker.sh
 ```
 
-Adjust the `/opt/g2s` paths to match `DEPLOY_ROOT` on this server.
+Adjust `/opt/g2s` to match `DEPLOY_ROOT`, and `mkdir -p tmp/upload` if needed.
 
-`mkdir -p tmp/upload` if it doesn't already exist.
+> `pdb` and `pdb-alignment-api` have the same kind of file too, but you don't
+> need to touch them for a standard setup like this. Only edit them if you
+> later change the DB host, port, name, or credentials.
 
 ### 7. HTTPS keystore (for port 5443)
 
