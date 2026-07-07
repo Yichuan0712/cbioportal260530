@@ -34,7 +34,6 @@ the app connects to — no need to start it.)
 ### 3. Import the `pdb_2026` dump
 
 ```bash
-# copy deploy-package/pdb_2026.sql.gz to the server first, then:
 gunzip -c pdb_2026.sql.gz | docker exec -i pdb-mariadb mysql -u cbio -pcbio pdb_2026
 ```
 
