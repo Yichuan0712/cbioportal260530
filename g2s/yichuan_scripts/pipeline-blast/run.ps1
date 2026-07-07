@@ -10,7 +10,8 @@
 #             added/modified PDB chains against the existing gene chunks, and
 #             delete stale rows for modified/removed ones first.
 #
-# Requires NCBI BLAST+ on PATH (see README - g2s/tools/ncbi-blast).
+# makeblastdb and blastp both run inside the ncbi/blast Docker image - no
+# native BLAST+ install is used or needed.
 
 param(
     [Parameter(Mandatory = $true, Position = 0)]
@@ -30,22 +31,6 @@ $G2sRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $MyInvocat
 Set-Location $G2sRoot
 . (Join-Path $G2sRoot "yichuan_scripts\env.ps1")
 . (Join-Path $G2sRoot "yichuan_scripts\pipeline-blast\config.ps1")
-
-function Assert-BlastTools {
-    if ($PipelineUseDockerBlast) { return }
-    foreach ($cmd in @("makeblastdb", "blastp")) {
-        if (-not (Get-Command $cmd -ErrorAction SilentlyContinue)) {
-            throw @"
-$cmd not found on PATH.
-
-Install NCBI BLAST+ and extract to:
-  g2s\tools\ncbi-blast\
-so that g2s\tools\ncbi-blast\blastp.exe exists, then re-run:
-  . .\yichuan_scripts\env.ps1
-"@
-        }
-    }
-}
 
 function Assert-DockerMysql {
     $running = docker ps --filter "name=$PipelineDbContainer" --format "{{.Names}}" 2>$null
@@ -149,7 +134,6 @@ function Invoke-Prepare {
 }
 
 function Invoke-Makedb {
-    Assert-BlastTools
     if (-not (Test-Path $PipelinePdbSeqresFasta)) {
         throw "Missing $PipelinePdbSeqresFasta - run Setup first"
     }
@@ -163,8 +147,7 @@ function Invoke-Makedb {
         return
     }
     Write-Host "[makedb] makeblastdb on pdb_seqres.fasta ..."
-    & makeblastdb -in $PipelinePdbSeqresFasta -dbtype prot -out $PipelinePdbBlastDb
-    if ($LASTEXITCODE -ne 0) { throw "makeblastdb failed" }
+    Invoke-MakeBlastDb -FastaIn $PipelinePdbSeqresFasta -DbOut $PipelinePdbBlastDb
 }
 
 function Invoke-InitDb {
@@ -229,10 +212,19 @@ function Get-WorkdirDockerPath([string]$Path) {
     return "/workdir/$rel"
 }
 
+function Invoke-MakeBlastDb([string]$FastaIn, [string]$DbOut) {
+    $mountRoot = Get-DockerPath $PipelineWorkspace
+    $fastaInDocker = Get-WorkdirDockerPath $FastaIn
+    $dbOutDocker = Get-WorkdirDockerPath $DbOut
+    Write-Host "  via docker: $PipelineBlastDockerImage"
+    docker run --rm -v "${mountRoot}:/workdir" $PipelineBlastDockerImage makeblastdb `
+        -in $fastaInDocker -dbtype prot -out $dbOutDocker
+    if ($LASTEXITCODE -ne 0) { throw "makeblastdb failed" }
+}
+
 function Invoke-BlastChunk {
     param([int]$Index, [switch]$ForceAlign)
 
-    if (-not $PipelineUseDockerBlast) { Assert-BlastTools }
     $manifest = Get-Manifest
     $pinFile = "$PipelinePdbBlastDb.pin"
     if (-not (Test-Path $pinFile)) {
@@ -256,32 +248,20 @@ function Invoke-BlastChunk {
     Write-Host "  query: $($chunk.query_fasta)"
     Write-Host "  xml:   $xmlOut"
 
-    if ($PipelineUseDockerBlast) {
-        $mountRoot = Get-DockerPath $PipelineWorkspace
-        $dbIn = Get-WorkdirDockerPath $PipelinePdbBlastDb
-        $queryIn = Get-WorkdirDockerPath $chunk.query_fasta
-        $xmlIn = Get-WorkdirDockerPath $xmlOut
-        Write-Host "  via docker: $PipelineBlastDockerImage"
-        docker run --rm -v "${mountRoot}:/workdir" $PipelineBlastDockerImage blastp `
-            -db $dbIn `
-            -query $queryIn `
-            -word_size $PipelineBlastWordSize `
-            -evalue $PipelineBlastEvalue `
-            -max_target_seqs $PipelineBlastMaxTargets `
-            -num_threads $PipelineBlastThreads `
-            -outfmt 5 `
-            -out $xmlIn
-    } else {
-        & blastp `
-            -db $PipelinePdbBlastDb `
-            -query $chunk.query_fasta `
-            -word_size $PipelineBlastWordSize `
-            -evalue $PipelineBlastEvalue `
-            -max_target_seqs $PipelineBlastMaxTargets `
-            -num_threads $PipelineBlastThreads `
-            -outfmt 5 `
-            -out $xmlOut
-    }
+    $mountRoot = Get-DockerPath $PipelineWorkspace
+    $dbIn = Get-WorkdirDockerPath $PipelinePdbBlastDb
+    $queryIn = Get-WorkdirDockerPath $chunk.query_fasta
+    $xmlIn = Get-WorkdirDockerPath $xmlOut
+    Write-Host "  via docker: $PipelineBlastDockerImage"
+    docker run --rm -v "${mountRoot}:/workdir" $PipelineBlastDockerImage blastp `
+        -db $dbIn `
+        -query $queryIn `
+        -word_size $PipelineBlastWordSize `
+        -evalue $PipelineBlastEvalue `
+        -max_target_seqs $PipelineBlastMaxTargets `
+        -num_threads $PipelineBlastThreads `
+        -outfmt 5 `
+        -out $xmlIn
     if ($LASTEXITCODE -ne 0) { throw "blastp failed for chunk $Index" }
 
     $raw = Get-Manifest
@@ -367,32 +347,19 @@ function Invoke-UpdateBlastChunk {
 
     $xmlOut = Join-Path $UpdateDir "chunk-$Index.xml"
     Write-Host "[update] blastp chunk $Index against delta DB ..."
-    if ($PipelineUseDockerBlast) {
-        $mountRoot = Get-DockerPath $PipelineWorkspace
-        $dbIn = Get-WorkdirDockerPath $DeltaDb
-        $queryIn = Get-WorkdirDockerPath $QueryFasta
-        $xmlIn = Get-WorkdirDockerPath $xmlOut
-        docker run --rm -v "${mountRoot}:/workdir" $PipelineBlastDockerImage blastp `
-            -db $dbIn `
-            -query $queryIn `
-            -word_size $PipelineBlastWordSize `
-            -evalue $PipelineBlastEvalue `
-            -max_target_seqs $PipelineBlastMaxTargets `
-            -num_threads $PipelineBlastThreads `
-            -outfmt 5 `
-            -out $xmlIn
-    } else {
-        Assert-BlastTools
-        & blastp `
-            -db $DeltaDb `
-            -query $QueryFasta `
-            -word_size $PipelineBlastWordSize `
-            -evalue $PipelineBlastEvalue `
-            -max_target_seqs $PipelineBlastMaxTargets `
-            -num_threads $PipelineBlastThreads `
-            -outfmt 5 `
-            -out $xmlOut
-    }
+    $mountRoot = Get-DockerPath $PipelineWorkspace
+    $dbIn = Get-WorkdirDockerPath $DeltaDb
+    $queryIn = Get-WorkdirDockerPath $QueryFasta
+    $xmlIn = Get-WorkdirDockerPath $xmlOut
+    docker run --rm -v "${mountRoot}:/workdir" $PipelineBlastDockerImage blastp `
+        -db $dbIn `
+        -query $queryIn `
+        -word_size $PipelineBlastWordSize `
+        -evalue $PipelineBlastEvalue `
+        -max_target_seqs $PipelineBlastMaxTargets `
+        -num_threads $PipelineBlastThreads `
+        -outfmt 5 `
+        -out $xmlIn
     if ($LASTEXITCODE -ne 0) { throw "blastp failed for update chunk $Index" }
     return $xmlOut
 }
@@ -457,12 +424,9 @@ DELETE FROM ``pdb_entry`` WHERE ``PDB_NO`` IN ($quoted);
     }
 
     # Step 5: makeblastdb on just the delta (added + modified) - tiny vs the full DB.
-    # makeblastdb runs natively fine on this machine (unlike blastp - see config.ps1);
-    # matches Invoke-Makedb's existing behavior.
     $deltaDb = Join-Path $updateDir "delta.db"
     Write-Host "[update] makeblastdb on delta ($($addedCount + $modifiedCount) sequence(s)) ..."
-    & makeblastdb -in $deltaFasta -dbtype prot -out $deltaDb
-    if ($LASTEXITCODE -ne 0) { throw "makeblastdb failed on delta" }
+    Invoke-MakeBlastDb -FastaIn $deltaFasta -DbOut $deltaDb
 
     # Step 6: blast the EXISTING gene chunks (from Setup - the reference proteome
     # doesn't change on PDB's weekly cadence) against just the delta DB, import each.

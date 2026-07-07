@@ -9,9 +9,9 @@ Daily usage: `../../START-SERVICES.md`. Linux deployment: `../PRODUCTION-DEPLOY.
 |------|---------------|
 | `env.ps1` | Windows only. Dot-sourced by the scripts below before building/running: detects JDK 8 (Corretto or a system install), Maven (repo-local `tools/` or system), and Docker Desktop, then puts them on `PATH`/`JAVA_HOME`/`MAVEN_HOME`. |
 | `start-services.ps1` | Windows daily entry point. Sources `env.ps1`, then opens three separate PowerShell windows running the G2S API (8081), PDB API (8082), and Web UI (5443) against `pdb_2026` with the `local` Spring profile. |
-| `start-web.ps1` | Windows. Starts only the Web UI (5443) service; builds `pdb-alignment-web` first if its jar is missing. |
+| `stop-services.ps1` | Windows counterpart to `start-services.ps1` — finds and kills the three java processes by matching their command line, so you don't have to close each window by hand. |
 | `start-services.sh` | Linux equivalent of `start-services.ps1`. Runs the same three services as background `java` processes, logging to `g2s/logs/*.log`. Used by `PRODUCTION-DEPLOY.md`. |
-| `stop-services.sh` | Linux equivalent's counterpart — kills the three java processes started by `start-services.sh`. |
+| `stop-services.sh` | Linux equivalent of `stop-services.ps1` — kills the three java processes started by `start-services.sh`. |
 
 ## blastp via Docker
 
@@ -22,7 +22,7 @@ points at these shims, so the "search by protein sequence" feature runs
 | File | What it does |
 |------|---------------|
 | `blastp-docker.cmd` | Windows shim actually in use. Rewrites the paths Java passes in and runs `blastp` inside the `ncbi/blast` Docker image. |
-| `blastp-docker.sh` | Linux equivalent, referenced by `PRODUCTION-DEPLOY.md`'s example `application-local.properties`. Not used by anything running today — only matters once G2S is actually deployed to a Linux server. |
+| `blastp-docker.sh` | Linux equivalent, used the same way via `application-local.properties`'s `blastp=` on a deployed server — see `../PRODUCTION-DEPLOY.md`. |
 
 ## One-time / historical DB setup
 

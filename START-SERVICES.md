@@ -44,5 +44,5 @@ Mutations / Genome Nexus / AlphaFold use public APIs; G2S is only needed for **P
 
 ## Stop
 
-- Close the Java service windows (or Ctrl+C in each).
+- Close the Java service windows (or Ctrl+C in each), or run `.\yichuan_scripts\stop-services.ps1` from `g2s/` to kill all three at once.
 - `docker compose down` in `g2s/` to stop databases.

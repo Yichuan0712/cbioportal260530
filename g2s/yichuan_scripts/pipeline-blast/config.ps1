@@ -50,9 +50,8 @@ $MaxGeneChunks = 0
 $MaxPdbSeqresLines = 0
 $MaxPdbFiles = 0
 
-# --- BLAST execution (local blastp needs VC++ redistributable on Windows) ---
+# --- BLAST execution: makeblastdb and blastp both always run via this Docker image ---
 $PipelineBlastDockerImage = "ncbi/blast:2.16.0"
-$PipelineUseDockerBlast = $true
 
 # --- Python interpreter (Linux boxes commonly only have "python3" on PATH) ---
 if (-not $PipelinePythonExe) {

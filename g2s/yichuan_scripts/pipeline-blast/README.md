@@ -14,16 +14,10 @@ Setup requires local PDB `.pdb.gz` under `g2s/g2s_pdb/`.
 
 Headers: `>101m_A_1 mol:protein length:154 0 154`
 
-## BLAST+ location
+## BLAST+ execution
 
-After:
-
-```powershell
-cd g2s
-. .\yichuan_scripts\env.ps1
-```
-
-`makeblastdb` / `blastp` on PATH, or set `$PipelineUseDockerBlast = $true` in `config.ps1`.
+`makeblastdb` and `blastp` both run inside the `ncbi/blast` Docker image
+(`config.ps1`'s `$PipelineBlastDockerImage`) — no native BLAST+ install needed.
 
 ## Layout
 

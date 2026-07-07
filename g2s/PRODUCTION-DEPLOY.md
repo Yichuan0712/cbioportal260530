@@ -70,8 +70,7 @@ spring.datasource.url=jdbc:mysql://localhost:3306/pdb_2026?useSSL=false
 workspace=/opt/g2s/workdir/
 uploaddir=/opt/g2s/tmp/upload
 
-# No native BLAST+ install on this box either - run blastp via the
-# ncbi/blast Docker image. See yichuan_scripts/blastp-docker.sh.
+# blastp runs inside the ncbi/blast Docker image - see yichuan_scripts/blastp-docker.sh.
 blastp=/opt/g2s/yichuan_scripts/blastp-docker.sh
 ```
 
