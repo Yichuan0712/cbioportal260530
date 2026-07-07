@@ -1,7 +1,7 @@
 # yichuan_scripts
 
-Helper scripts for running G2S locally (Windows) and on a deployed Linux server.
-Daily usage: `../../START-SERVICES.md`. Linux deployment: `../PRODUCTION-DEPLOY.md`.
+Helper scripts for running G2S locally and on a deployed server.
+Daily usage: `../../START-SERVICES.md`. Deploying to a new machine: `../PRODUCTION-DEPLOY.md`.
 
 ## Daily use
 
