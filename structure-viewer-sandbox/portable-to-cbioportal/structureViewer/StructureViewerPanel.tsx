@@ -672,7 +672,12 @@ export default class StructureViewerPanel extends React.Component<
                     {this.structureSource === StructureSource.ALPHAFOLD && (
                         <Checkbox
                             checked={this.displayPaeHeatmap}
-                            onChange={this.handlePaeHeatmapChange}
+                            onChange={
+                                this
+                                    .handlePaeHeatmapChange as React.FormEventHandler<
+                                    any
+                                >
+                            }
                         >
                             Display PAE heatmap{' '}
                             {this.defaultInfoTooltip(() =>
@@ -812,19 +817,57 @@ export default class StructureViewerPanel extends React.Component<
                             onClick={this.toggleDoubleSize}
                             style={{ marginRight: 5, cursor: 'pointer' }}
                         />
-                        <i
-                            className={classnames('fa', {
-                                'fa-minus-circle': !this.isCollapsed,
-                                'fa-plus-circle': this.isCollapsed,
-                            })}
+                        {/* Hand-drawn (not font-glyph) so the mark thickness is an
+                            explicit stroke-width, not at the mercy of the
+                            renderer's font hinting/anti-aliasing. */}
+                        <svg
+                            width="14"
+                            height="14"
+                            viewBox="0 0 16 16"
                             onClick={this.toggleCollapse}
-                            style={{ marginRight: 5, cursor: 'pointer' }}
-                        />
-                        <i
-                            className="fa fa-times-circle"
+                            style={{
+                                marginRight: 5,
+                                cursor: 'pointer',
+                                verticalAlign: -2,
+                            }}
+                        >
+                            <circle cx="8" cy="8" r="7.9" fill="currentColor" />
+                            <rect
+                                x="4.1"
+                                y="6.85"
+                                width="7.8"
+                                height="2.3"
+                                rx="1.15"
+                                fill="#fff"
+                            />
+                        </svg>
+                        <svg
+                            width="14"
+                            height="14"
+                            viewBox="0 0 16 16"
                             onClick={this.props.onClose}
-                            style={{ cursor: 'pointer' }}
-                        />
+                            style={{ cursor: 'pointer', verticalAlign: -2 }}
+                        >
+                            <circle cx="8" cy="8" r="7.9" fill="currentColor" />
+                            <line
+                                x1="5.1"
+                                y1="5.1"
+                                x2="10.9"
+                                y2="10.9"
+                                stroke="#fff"
+                                strokeWidth="2.3"
+                                strokeLinecap="round"
+                            />
+                            <line
+                                x1="10.9"
+                                y1="5.1"
+                                x2="5.1"
+                                y2="10.9"
+                                stroke="#fff"
+                                strokeWidth="2.3"
+                                strokeLinecap="round"
+                            />
+                        </svg>
                     </span>
                 </div>
             </div>

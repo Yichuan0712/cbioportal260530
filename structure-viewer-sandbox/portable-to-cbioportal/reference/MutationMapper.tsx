@@ -389,7 +389,14 @@ export default class MutationMapper<
                 pdbAlignmentIndex={this.props.store.indexedAlignmentData}
                 pdbHeaderCache={this.props.pdbHeaderCache}
                 residueMappingCache={this.props.store.residueMappingCache}
-                uniprotId={this.props.store.uniprotId.result}
+                // store.uniprotId.result is a UniProt *entry name* (e.g.
+                // "BRCA1_HUMAN", via a MyGene->UniProt round trip in
+                // DefaultMutationMapperStore) — AlphaFold/G2S need the
+                // accession (e.g. "P38398"), which canonicalTranscript
+                // already carries straight from Genome Nexus.
+                uniprotId={
+                    this.props.store.canonicalTranscript.result?.uniprotId
+                }
                 /*
                  * 3D mutation label detail (HGVSp, SIFT, PolyPhen, …): reuses Genome Nexus data
                  * already loaded for the Mutation Mapper table — no extra API call.

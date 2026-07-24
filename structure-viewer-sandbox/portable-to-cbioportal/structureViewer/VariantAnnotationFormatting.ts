@@ -2,6 +2,11 @@ import { Mutation } from 'cbioportal-ts-api-client';
 import { VariantAnnotation } from 'genome-nexus-ts-api-client';
 import { getVariantAnnotationForMutation } from './GenomicLocationUtils';
 
+// putativeDriver is a client-computed annotation (see shared/model/AnnotatedMutation
+// in the host app), not part of the base generated Mutation type; declared inline
+// here so this file has no host-only dependency and stays copy-back.ps1-portable.
+type MutationWithDriverAnnotation = Mutation & { putativeDriver?: boolean };
+
 export function getMutationDisplayName(mutation: Partial<Mutation>): string {
     return (
         mutation.proteinChange ||
@@ -13,7 +18,7 @@ export function getMutationDisplayName(mutation: Partial<Mutation>): string {
 }
 
 export function formatMutationLabelShort(
-    mutations: Partial<Mutation>[],
+    mutations: Partial<MutationWithDriverAnnotation>[],
     indexedVariantAnnotations?: {
         [genomicLocation: string]: VariantAnnotation;
     }
@@ -42,7 +47,7 @@ function pushLine(lines: string[], label: string, value?: string | number) {
 }
 
 export function formatMutationDetailLines(
-    mutations: Partial<Mutation>[],
+    mutations: Partial<MutationWithDriverAnnotation>[],
     indexedVariantAnnotations?: {
         [genomicLocation: string]: VariantAnnotation;
     }
@@ -107,13 +112,10 @@ export function formatMutationDetailLines(
         pushLine(lines, 'Hotspot', 'yes');
     }
 
-    const clinvarEntry =
-        annotation?.clinvar?.annotation?.clinvarEntries?.[0];
+    const clinvarEntry = annotation?.clinvar?.annotation;
 
     if (clinvarEntry?.clinicalSignificance) {
         pushLine(lines, 'ClinVar', clinvarEntry.clinicalSignificance);
-    } else if (clinvarEntry?.title) {
-        pushLine(lines, 'ClinVar', clinvarEntry.title);
     }
 
     if (lines.length === 0) {

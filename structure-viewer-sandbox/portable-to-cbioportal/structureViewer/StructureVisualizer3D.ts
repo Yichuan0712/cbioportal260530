@@ -298,6 +298,15 @@ export default class StructureVisualizer3D extends StructureVisualizer {
         residues: IResidueSpec[] = this.state.residues,
         props: IStructureVisualizerProps = this.props
     ) {
+        // Switching source (e.g. AlphaFold -> PDB) reaches loadStructure with
+        // fresh props, but this.props (read later by onStateChange once the
+        // async load resolves) is otherwise only refreshed in updateViewer's
+        // no-reload path. Without this, updateVisualStyle can still see the
+        // previous source/proteinColor and take the wrong style branch,
+        // leaving the new model with 3Dmol's default line style instead of
+        // the selected cartoon/trace/etc. scheme.
+        this.setProps(props);
+
         if (structureSource === StructureSource.ALPHAFOLD) {
             this.loadAlphaFold(structureId, chainId, residues, props);
         } else {
@@ -509,6 +518,22 @@ export default class StructureVisualizer3D extends StructureVisualizer {
             if (dirty && this._3dMolViewer) {
                 this._3dMolViewer.render();
             }
+            return;
+        }
+
+        // No-op guard: a componentDidUpdate pass can reach here with the same
+        // chainId/residues right after loadStructure's own setState already
+        // applied them (e.g. right after switching structure source). Calling
+        // setState again here is a no-op in terms of visible state, but it
+        // still overwrites _prevState with a snapshot equal to the current
+        // state, which makes needToUpdateResiduesOnly wrongly evaluate to
+        // true once the pending load's callback fires — skipping the cartoon/
+        // trace/etc. style pass entirely and leaving 3Dmol's default line
+        // style on the new model.
+        if (
+            chainId === this.state.chainId &&
+            _.isEqual(residues, this.state.residues)
+        ) {
             return;
         }
 
